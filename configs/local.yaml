@@ -1,2 +1,6 @@
 # local, dev
 env: "local"
+
+log:
+  # debug, info, warn, error
+  level: "debug"
