@@ -3,7 +3,7 @@ services:
     image: postgres:alpine
     container_name: postgres
     ports:
-      - '${POSTGRES_PORT}:5432'
+      - '${POSTGRES_CONTAINER_OUTER_PORT}:${POSTGRES_CONTAINER_INNER_PORT}'
     environment:
       POSTGRES_USER: '${POSTGRES_USER}'
       POSTGRES_PASSWORD: '${POSTGRES_PASSWORD}'
@@ -17,6 +17,26 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+
+  pgbouncer:
+    image: edoburu/pgbouncer
+    container_name: pgbouncer
+    ports:
+      - '${PGBOUNCER_OUTER_PORT}:${PGBOUNCER_INNER_PORT}'
+    environment:
+      DB_USER: '${POSTGRES_USER}'
+      DB_PASSWORD: '${POSTGRES_PASSWORD}'
+      DB_HOST: '${PGBOUNCER_DB_HOST}'
+      DB_NAME: '${POSTGRES_DATABASE}'
+      AUTH_TYPE: '${PGBOUNCER_AUTH_TYPE}'
+      POOL_MODE: '${PGBOUNCER_POOL_MODE}'
+      ADMIN_USERS: '${POSTGRES_USER}'
+    depends_on:
+      postgres:
+        required: true
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'pg_isready', '-h', 'localhost']
 
 volumes:
   postgres_data:

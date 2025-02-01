@@ -105,6 +105,8 @@ func mustSetupLogger(env string, cfg *config.LogConfig) log.Logger {
 
 	slog.ErrorFieldKey = "error"
 	l := slog.NewLogger(stdslog.New(zapHandler))
+	l = l.With(log.Fields{"pid": os.Getpid()}).(*slog.Logger)
+
 	l.With(log.Fields{"level": cfg.Level}).Info("initialized logger")
 	return l
 }
@@ -119,7 +121,6 @@ func mustConnectToPostgres(logger log.Logger, cfg *config.PostgresConfig) *pgx.D
 		User:              cfg.User,
 		Password:          cfg.Password,
 		Database:          cfg.Database,
-		Schema:            cfg.Schema,
 		SSLMode:           cfg.SSLMode,
 		MaxConns:          cfg.MaxConns,
 		MinConns:          cfg.MinConns,

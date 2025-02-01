@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/adanyl0v/pocket-ideas/pkg/log"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"os"
 	"time"
 )
 
@@ -17,7 +16,6 @@ type Config struct {
 	User              string
 	Password          string
 	Database          string
-	Schema            string
 	SSLMode           string
 	MaxConns          int
 	MinConns          int
@@ -27,15 +25,12 @@ type Config struct {
 }
 
 func (c *Config) URL() string {
-	if c.Schema == "" {
-		c.Schema = "public"
-	}
 	if c.SSLMode == "" {
 		c.SSLMode = "disable"
 	}
 
-	return fmt.Sprintf("postgres://%s:%s@%s:%d/%s?search_path=%s&sslmode=%s",
-		c.User, c.Password, c.Host, c.Port, c.Database, c.Schema, c.SSLMode)
+	return fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s",
+		c.User, c.Password, c.Host, c.Port, c.Database, c.SSLMode)
 }
 
 type DB struct {
@@ -55,8 +50,6 @@ func (db *DB) Pool() *pgxpool.Pool {
 }
 
 func Connect(ctx context.Context, config *Config, logger log.Logger) (*DB, error) {
-	logger = logger.With(log.Fields{"pid": os.Getpid()})
-
 	c, err := pgxpool.ParseConfig(config.URL())
 	if err != nil {
 		logger.WithError(err).Error("failed to parse the connection config")
@@ -67,7 +60,6 @@ func Connect(ctx context.Context, config *Config, logger log.Logger) (*DB, error
 		"host":     config.Host,
 		"port":     config.Port,
 		"database": config.Database,
-		"schema":   config.Schema,
 		"sslmode":  config.SSLMode,
 	}).Debug("parsed the connection config")
 

@@ -31,7 +31,6 @@ type PostgresConfig struct {
 	User              string        `yaml:"user" env:"POSTGRES_USER" env-required:"true"`
 	Password          string        `yaml:"password" env:"POSTGRES_PASSWORD" env-required:"true"`
 	Database          string        `yaml:"database" env:"POSTGRES_DATABASE" env-required:"true"`
-	Schema            string        `yaml:"schema" env:"POSTGRES_SCHEMA" env-default:"public"`
 	SSLMode           string        `yaml:"ssl_mode" env:"POSTGRES_SSL_MODE" env-default:"disable"`
 	ConnTimout        time.Duration `yaml:"conn_timout" env:"POSTGRES_CONN_TIMOUT" env-default:"5s"`
 	MaxConns          int           `yaml:"max_conns" env:"POSTGRES_MAX_CONNS" env-default:"4"`
