@@ -12,6 +12,7 @@ type Fields map[string]any
 
 type Logger interface {
 	Log(leveler Leveler, msg string)
+	Trace(msg string)
 	Debug(msg string)
 	Info(msg string)
 	Warn(msg string)
