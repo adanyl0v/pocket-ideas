@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/adanyl0v/pocket-ideas/pkg/log"
 	"log/slog"
+	"reflect"
 	"runtime"
 	"slices"
 	"time"
@@ -29,6 +30,11 @@ func NewLogger(logger *slog.Logger) *Logger {
 
 func (l *Logger) Log(leveler log.Leveler, msg string) {
 	l.log(leveler, msg)
+}
+
+func (l *Logger) Trace(msg string) {
+	// slog doesn't support Trace level, so Debug level is the closest
+	l.log(DebugLevel, msg)
 }
 
 func (l *Logger) Debug(msg string) {
@@ -115,15 +121,15 @@ func computeFields(dst *[]slog.Attr, fields log.Fields) {
 		case string:
 			attr.Value = slog.StringValue(v)
 		case int, int8, int16, int32:
-			attr.Value = slog.IntValue(v.(int))
+			attr.Value = slog.IntValue(int(reflect.ValueOf(v).Int()))
 		case uint, uint8, uint16, uint32:
-			attr.Value = slog.Int64Value(v.(int64))
+			attr.Value = slog.Uint64Value(reflect.ValueOf(v).Uint())
 		case int64:
 			attr.Value = slog.Int64Value(v)
 		case uint64:
 			attr.Value = slog.Uint64Value(v)
 		case float32, float64:
-			attr.Value = slog.Float64Value(v.(float64))
+			attr.Value = slog.Float64Value(reflect.ValueOf(v).Float())
 		case bool:
 			attr.Value = slog.BoolValue(v)
 		case time.Time:

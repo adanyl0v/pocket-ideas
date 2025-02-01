@@ -1,8 +1,10 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"github.com/adanyl0v/pocket-ideas/internal/config"
+	"github.com/adanyl0v/pocket-ideas/pkg/database/postgres/pgx"
 	"github.com/adanyl0v/pocket-ideas/pkg/log"
 	"github.com/adanyl0v/pocket-ideas/pkg/log/slog"
 	slogzap "github.com/samber/slog-zap/v2"
@@ -19,6 +21,9 @@ func Run() {
 	cfg := config.MustReadFile(config.DefaultFilePath())
 	logger = mustSetupLogger(cfg.Env, &cfg.Log)
 	logger.With(log.Fields{"env": cfg.Env}).Info("read config")
+
+	db := mustConnectToPostgres(logger, &cfg.PostgresConfig)
+	_ = db
 }
 
 func mustSetupLogger(env string, cfg *config.LogConfig) log.Logger {
@@ -27,6 +32,12 @@ func mustSetupLogger(env string, cfg *config.LogConfig) log.Logger {
 		slogLevel stdslog.Level
 	)
 	switch cfg.Level {
+	case config.LogLevelTrace:
+		fmt.Println("used logger doesn't support trace level, so using debug as the closest one")
+		cfg.Level = config.LogLevelDebug
+
+		zapLevel = zapcore.DebugLevel
+		slogLevel = stdslog.LevelDebug
 	case config.LogLevelDebug:
 		zapLevel = zapcore.DebugLevel
 		slogLevel = stdslog.LevelDebug
@@ -56,7 +67,7 @@ func mustSetupLogger(env string, cfg *config.LogConfig) log.Logger {
 			StacktraceKey:  "@STACKTRACE",
 			EncodeLevel:    zapcore.CapitalColorLevelEncoder,
 			EncodeTime:     zapcore.TimeEncoderOfLayout("2006-01-02 15:04:05"),
-			EncodeDuration: zapcore.SecondsDurationEncoder,
+			EncodeDuration: zapcore.StringDurationEncoder,
 			EncodeCaller: func(caller zapcore.EntryCaller, encoder zapcore.PrimitiveArrayEncoder) {
 				cwd, _ := os.Getwd()
 				file, _ := filepath.Rel(cwd, caller.FullPath())
@@ -96,4 +107,32 @@ func mustSetupLogger(env string, cfg *config.LogConfig) log.Logger {
 	l := slog.NewLogger(stdslog.New(zapHandler))
 	l.With(log.Fields{"level": cfg.Level}).Info("initialized logger")
 	return l
+}
+
+func mustConnectToPostgres(logger log.Logger, cfg *config.PostgresConfig) *pgx.DB {
+	ctx, cancel := context.WithTimeout(context.Background(), cfg.ConnTimout)
+	defer cancel()
+
+	connConfig := pgx.Config{
+		Host:              cfg.Host,
+		Port:              cfg.Port,
+		User:              cfg.User,
+		Password:          cfg.Password,
+		Database:          cfg.Database,
+		Schema:            cfg.Schema,
+		SSLMode:           cfg.SSLMode,
+		MaxConns:          cfg.MaxConns,
+		MinConns:          cfg.MinConns,
+		MaxConnLifetime:   cfg.MaxConnLifetime,
+		MaxConnIdleTime:   cfg.MaxConnIdleTime,
+		HealthCheckPeriod: cfg.HealthCheckPeriod,
+	}
+
+	db, err := pgx.Connect(ctx, &connConfig, logger)
+	if err != nil {
+		panic(err)
+	}
+
+	logger.Info("connected to postgres")
+	return db
 }

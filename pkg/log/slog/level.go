@@ -12,12 +12,18 @@ func (l Level) Level() log.Level {
 }
 
 func (l Level) SlogLevel() slog.Level {
-	level, exists := slogLevels[l]
-	if !exists {
-		return level
+	switch l {
+	case DebugLevel:
+		return slog.LevelDebug
+	case InfoLevel:
+		return slog.LevelInfo
+	case WarnLevel:
+		return slog.LevelWarn
+	case ErrorLevel:
+		return slog.LevelError
+	default:
+		return slog.Level(l)
 	}
-
-	return slog.Level(l)
 }
 
 const (
@@ -26,10 +32,3 @@ const (
 	WarnLevel
 	ErrorLevel
 )
-
-var slogLevels = map[Level]slog.Level{
-	DebugLevel: slog.LevelDebug,
-	InfoLevel:  slog.LevelInfo,
-	WarnLevel:  slog.LevelWarn,
-	ErrorLevel: slog.LevelError,
-}
