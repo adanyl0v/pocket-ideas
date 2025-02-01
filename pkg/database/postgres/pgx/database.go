@@ -3,8 +3,12 @@ package pgx
 import (
 	"context"
 	"fmt"
+	"github.com/adanyl0v/pocket-ideas/pkg/database/postgres"
 	"github.com/adanyl0v/pocket-ideas/pkg/log"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	pgxuuid "github.com/vgarvardt/pgx-google-uuid/v5"
+
 	"time"
 )
 
@@ -69,6 +73,12 @@ func Connect(ctx context.Context, config *Config, logger log.Logger) (*DB, error
 	c.MaxConnIdleTime = config.MaxConnIdleTime
 	c.HealthCheckPeriod = config.HealthCheckPeriod
 
+	// Ensure that pgx supports google UUIDs
+	c.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
+		pgxuuid.Register(conn.TypeMap())
+		return nil
+	}
+
 	pool, err := pgxpool.NewWithConfig(ctx, c)
 	if err != nil {
 		logger.WithError(err).Error("failed to create a new connection pool")
@@ -94,5 +104,21 @@ func Connect(ctx context.Context, config *Config, logger log.Logger) (*DB, error
 		"acquired_empty": stat.EmptyAcquireCount(),
 	}).Debug("pinged the connection")
 
-	return New(pool, logger), nil
+	return New(pool, logger.WithCallerSkip(1)), nil
+}
+
+func (db *DB) Exec(ctx context.Context, query string, args ...any) error {
+	return exec(db.pool, db.logger, ctx, query, args...)
+}
+
+func (db *DB) Query(ctx context.Context, query string, args ...any) (postgres.Rows, error) {
+	return queryRows(db.pool, db.logger, ctx, query, args...)
+}
+
+func (db *DB) QueryRow(ctx context.Context, query string, args ...any) postgres.Row {
+	return queryRow(db.pool, db.logger, ctx, query, args...)
+}
+
+func (db *DB) Begin(ctx context.Context) (postgres.Tx, error) {
+	return begin(db.pool, db.logger, ctx)
 }
