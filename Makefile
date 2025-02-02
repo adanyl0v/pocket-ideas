@@ -19,6 +19,8 @@ NDOWN=1
 migrate_down:
 	@migrate -source $(POSTGRES_MIGRATION_SOURCE) -database $(POSTGRES_URL) down $(NDOWN)
 
-
 run:
 	@go run ./cmd/app/main.go
+
+mockgen:
+	@mockgen -source $(SRC) -destination $(DEST) -package $(PKG)

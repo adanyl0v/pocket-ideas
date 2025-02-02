@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-type userDTO interface {
+type userRepositoryDTO interface {
 	ToDomain(user *domain.User)
 	FromDomain(user *domain.User)
 }

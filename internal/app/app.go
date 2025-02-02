@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/adanyl0v/pocket-ideas/internal/config"
+	"github.com/adanyl0v/pocket-ideas/internal/domain"
 	"github.com/adanyl0v/pocket-ideas/internal/repository/postgres"
 	"github.com/adanyl0v/pocket-ideas/pkg/database/postgres/pgx"
 	"github.com/adanyl0v/pocket-ideas/pkg/log"
@@ -27,7 +28,7 @@ func Run() {
 	db := mustConnectToPostgres(logger, &cfg.PostgresConfig)
 
 	userRepo := postgres.NewUserRepository(db, logger, googleuuidgen.New())
-	_ = userRepo
+	_ = userRepo.Create(context.Background(), &domain.User{})
 }
 
 func mustSetupLogger(env string, cfg *config.LogConfig) log.Logger {

@@ -13,6 +13,8 @@ import (
 
 var (
 	ErrUserExists = errors.New("user already exists")
+
+	errGenUserID = errors.New("failed to generate a new user id")
 )
 
 type UserRepository struct {
@@ -41,7 +43,8 @@ func (r *UserRepository) Create(ctx context.Context, user *domain.User) error {
 
 	id, err := r.idGen.NewV7()
 	if err != nil {
-		r.logger.WithError(err).Error("failed to generate a new user id")
+		err = proxerr.New(errGenUserID, err.Error())
+		r.logger.WithError(err).Error(errGenUserID.Error())
 		return err
 	}
 
@@ -52,15 +55,16 @@ func (r *UserRepository) Create(ctx context.Context, user *domain.User) error {
 		dto.Password, dto.CreatedAt, dto.UpdatedAt); err != nil {
 
 		var pxErr proxerr.Error
-		if errors.As(err, &pxErr) && errors.Is(pxErr.Unwrap(), pgdb.ErrUniqueViolation) {
-			r.logger.With(log.Fields{
-				"email": dto.Email,
-			}).Warn("tried to create a new user with existing email")
-			err = proxerr.New(ErrUserExists, pxErr.Error())
-		} else {
-			r.logger.WithError(err).Error("failed to insert user into the database")
+		if errors.As(err, &pxErr) {
+			if errors.Is(pxErr.Unwrap(), pgdb.ErrUniqueViolation) {
+				r.logger.With(log.Fields{
+					"email": dto.Email,
+				}).Warn("tried to create a new user with existing email")
+				return proxerr.New(ErrUserExists, pxErr.Error())
+			}
 		}
 
+		r.logger.WithError(err).Error("failed to insert user into the database")
 		return err
 	}
 

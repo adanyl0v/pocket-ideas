@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"strings"
 	"time"
 )
 
@@ -67,7 +68,7 @@ type pgxExecutor interface {
 }
 
 func exec(executor pgxExecutor, logger log.Logger, ctx context.Context, query string, args ...any) error {
-	logger = logger.With(log.Fields{"sql": query})
+	logger = logger.With(log.Fields{"sql": inlineQuery(query)})
 
 	startedAt := time.Now()
 	_, err := executor.Exec(ctx, query, args...)
@@ -88,7 +89,7 @@ type pgxRowQuerier interface {
 }
 
 func queryRow(querier pgxRowQuerier, logger log.Logger, ctx context.Context, query string, args ...any) *Row {
-	logger = logger.With(log.Fields{"sql": query})
+	logger = logger.With(log.Fields{"sql": inlineQuery(query)})
 
 	startedAt := time.Now()
 	row := querier.QueryRow(ctx, query, args...)
@@ -103,7 +104,7 @@ type pgxQuerier interface {
 }
 
 func queryRows(querier pgxQuerier, logger log.Logger, ctx context.Context, query string, args ...any) (*Rows, error) {
-	logger = logger.With(log.Fields{"sql": query})
+	logger = logger.With(log.Fields{"sql": inlineQuery(query)})
 
 	startedAt := time.Now()
 	rows, err := querier.Query(ctx, query, args...)
@@ -159,4 +160,8 @@ func handleCommonExecErrors(err error) error {
 	}
 
 	return err
+}
+
+func inlineQuery(query string) string {
+	return strings.TrimSpace(strings.ReplaceAll(query, "\n", " "))
 }
