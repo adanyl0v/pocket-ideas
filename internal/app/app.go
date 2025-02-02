@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"github.com/adanyl0v/pocket-ideas/internal/config"
+	"github.com/adanyl0v/pocket-ideas/internal/repository/postgres"
 	"github.com/adanyl0v/pocket-ideas/pkg/database/postgres/pgx"
 	"github.com/adanyl0v/pocket-ideas/pkg/log"
 	"github.com/adanyl0v/pocket-ideas/pkg/log/slog"
+	googleuuidgen "github.com/adanyl0v/pocket-ideas/pkg/uuid/google"
 	slogzap "github.com/samber/slog-zap/v2"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -23,7 +25,9 @@ func Run() {
 	logger.With(log.Fields{"env": cfg.Env}).Info("read config")
 
 	db := mustConnectToPostgres(logger, &cfg.PostgresConfig)
-	_ = db
+
+	userRepo := postgres.NewUserRepository(db, logger, googleuuidgen.New())
+	_ = userRepo
 }
 
 func mustSetupLogger(env string, cfg *config.LogConfig) log.Logger {

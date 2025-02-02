@@ -142,16 +142,20 @@ func begin(beginner pgxBeginner, logger log.Logger, ctx context.Context) (*Tx, e
 func handleCommonExecErrors(err error) error {
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) {
+		var commonErr error
+
 		switch pgErr.Code {
 		case pgerrcode.CheckViolation:
-			err = proxerr.New(postgres.ErrCheckViolation, err.Error())
+			commonErr = postgres.ErrCheckViolation
 		case pgerrcode.UniqueViolation:
-			err = proxerr.New(postgres.ErrUniqueViolation, err.Error())
+			commonErr = postgres.ErrUniqueViolation
 		case pgerrcode.NotNullViolation:
-			err = proxerr.New(postgres.ErrNotNullViolation, err.Error())
+			commonErr = postgres.ErrNotNullViolation
 		case pgerrcode.ForeignKeyViolation:
-			err = proxerr.New(postgres.ErrForeignKeyViolation, err.Error())
+			commonErr = postgres.ErrForeignKeyViolation
 		}
+
+		err = proxerr.New(commonErr, err.Error())
 	}
 
 	return err
