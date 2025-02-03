@@ -111,12 +111,7 @@ func queryRows(querier pgxQuerier, logger log.Logger, ctx context.Context, query
 	endedAt := time.Now()
 
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			err = proxerr.New(postgres.ErrNoRows, err.Error())
-		} else {
-			err = handleCommonExecErrors(err)
-		}
-
+		err = handleCommonExecErrors(err)
 		logger.WithError(err).Error("failed")
 		return nil, err
 	}
@@ -132,7 +127,7 @@ type pgxBeginner interface {
 func begin(beginner pgxBeginner, logger log.Logger, ctx context.Context) (*Tx, error) {
 	tx, err := beginner.Begin(ctx)
 	if err != nil {
-		logger.WithError(err).Error("failed to start a transaction")
+		logger.WithError(err).Error("failed to begin a transaction")
 		return nil, err
 	}
 

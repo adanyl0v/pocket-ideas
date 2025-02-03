@@ -5,7 +5,7 @@ import (
 	"github.com/adanyl0v/pocket-ideas/pkg/log"
 )
 
-type repository struct {
+type Repository struct {
 	conn   pgdb.Conn
 	logger log.Logger
 }

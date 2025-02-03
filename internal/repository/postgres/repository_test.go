@@ -9,6 +9,11 @@ import (
 	"testing"
 )
 
+const (
+	testCaseSuccess = "success"
+	testCaseFailure = "failure"
+)
+
 var testCaseEmptyLogger log.Logger
 
 func TestMain(m *testing.M) {

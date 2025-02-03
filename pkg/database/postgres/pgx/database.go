@@ -107,6 +107,11 @@ func Connect(ctx context.Context, config *Config, logger log.Logger) (*DB, error
 	return New(pool, logger.WithCallerSkip(1)), nil
 }
 
+func (db *DB) Close() error {
+	db.pool.Close()
+	return nil
+}
+
 func (db *DB) Exec(ctx context.Context, query string, args ...any) error {
 	return exec(db.pool, db.logger, ctx, query, args...)
 }
