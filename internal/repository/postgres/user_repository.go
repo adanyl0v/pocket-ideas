@@ -13,22 +13,11 @@ import (
 )
 
 var (
-	ErrUserExists   = errors.New(msgUserAlreadyExists)
-	ErrUserNotFound = errors.New(msgUserNotFound)
-	ErrNoUsersFound = errors.New(msgNoUsersFound)
+	ErrUserExists   = errors.New("user already exists")
+	ErrUserNotFound = errors.New("user not found")
+	ErrNoUsersFound = errors.New("no users found")
 
-	errGenerateUserId = errors.New(msgFailedToGenerateUserID)
-)
-
-// For testing purpose
-const (
-	msgUserAlreadyExists      = "user already exists"
-	msgUserNotFound           = "user not found"
-	msgNoUsersFound           = "no users found"
-	msgFailedToGenerateUserID = "failed to generate user id"
-	msgFailedToSelectAllUsers = "failed to select all users"
-	msgFailedToScanAllUsers   = "failed to scan all users"
-	msgNoUserRowsAffected     = "no rows affected"
+	errGenerateUserId = errors.New("failed to generate user id")
 )
 
 type UserRepository struct {
@@ -192,7 +181,7 @@ FROM users
 func (r *UserRepository) SelectAll(ctx context.Context) ([]domain.User, error) {
 	rows, err := r.conn.Query(ctx, selectAllUsersQuery)
 	if err != nil {
-		r.logger.WithError(err).Error(msgFailedToSelectAllUsers)
+		r.logger.WithError(err).Error("failed to select all users")
 		return nil, err
 	}
 	defer rows.Close()
@@ -204,7 +193,7 @@ func (r *UserRepository) SelectAll(ctx context.Context) ([]domain.User, error) {
 			err = proxerr.New(ErrNoUsersFound, pgdb.ErrNoRows.Error())
 			r.logger.Warn(ErrNoUsersFound.Error())
 		} else {
-			r.logger.WithError(err).Error(msgNoUserRowsAffected)
+			r.logger.WithError(err).Error("no users selected")
 		}
 
 		return nil, err
@@ -216,7 +205,7 @@ func (r *UserRepository) SelectAll(ctx context.Context) ([]domain.User, error) {
 		if err = rows.Scan(&dto.ID, &dto.Name, &dto.Email, &dto.Password,
 			&dto.CreatedAt, &dto.UpdatedAt); err != nil {
 
-			r.logger.WithError(err).Error(msgFailedToScanAllUsers)
+			r.logger.WithError(err).Error("failed to scan all users")
 			return nil, err
 		}
 
