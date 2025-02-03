@@ -3,9 +3,12 @@ package pgx
 import (
 	"context"
 	"fmt"
+	"github.com/adanyl0v/pocket-ideas/pkg/database/postgres"
 	"github.com/adanyl0v/pocket-ideas/pkg/log"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"os"
+	pgxuuid "github.com/vgarvardt/pgx-google-uuid/v5"
+
 	"time"
 )
 
@@ -17,7 +20,6 @@ type Config struct {
 	User              string
 	Password          string
 	Database          string
-	Schema            string
 	SSLMode           string
 	MaxConns          int
 	MinConns          int
@@ -27,15 +29,12 @@ type Config struct {
 }
 
 func (c *Config) URL() string {
-	if c.Schema == "" {
-		c.Schema = "public"
-	}
 	if c.SSLMode == "" {
 		c.SSLMode = "disable"
 	}
 
-	return fmt.Sprintf("postgres://%s:%s@%s:%d/%s?search_path=%s&sslmode=%s",
-		c.User, c.Password, c.Host, c.Port, c.Database, c.Schema, c.SSLMode)
+	return fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s",
+		c.User, c.Password, c.Host, c.Port, c.Database, c.SSLMode)
 }
 
 type DB struct {
@@ -55,8 +54,6 @@ func (db *DB) Pool() *pgxpool.Pool {
 }
 
 func Connect(ctx context.Context, config *Config, logger log.Logger) (*DB, error) {
-	logger = logger.With(log.Fields{"pid": os.Getpid()})
-
 	c, err := pgxpool.ParseConfig(config.URL())
 	if err != nil {
 		logger.WithError(err).Error("failed to parse the connection config")
@@ -67,7 +64,6 @@ func Connect(ctx context.Context, config *Config, logger log.Logger) (*DB, error
 		"host":     config.Host,
 		"port":     config.Port,
 		"database": config.Database,
-		"schema":   config.Schema,
 		"sslmode":  config.SSLMode,
 	}).Debug("parsed the connection config")
 
@@ -76,6 +72,12 @@ func Connect(ctx context.Context, config *Config, logger log.Logger) (*DB, error
 	c.MaxConnLifetime = config.MaxConnLifetime
 	c.MaxConnIdleTime = config.MaxConnIdleTime
 	c.HealthCheckPeriod = config.HealthCheckPeriod
+
+	// Ensure that pgx supports google UUIDs
+	c.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
+		pgxuuid.Register(conn.TypeMap())
+		return nil
+	}
 
 	pool, err := pgxpool.NewWithConfig(ctx, c)
 	if err != nil {
@@ -102,5 +104,26 @@ func Connect(ctx context.Context, config *Config, logger log.Logger) (*DB, error
 		"acquired_empty": stat.EmptyAcquireCount(),
 	}).Debug("pinged the connection")
 
-	return New(pool, logger), nil
+	return New(pool, logger.WithCallerSkip(1)), nil
+}
+
+func (db *DB) Close() error {
+	db.pool.Close()
+	return nil
+}
+
+func (db *DB) Exec(ctx context.Context, query string, args ...any) error {
+	return exec(db.pool, db.logger, ctx, query, args...)
+}
+
+func (db *DB) Query(ctx context.Context, query string, args ...any) (postgres.Rows, error) {
+	return queryRows(db.pool, db.logger, ctx, query, args...)
+}
+
+func (db *DB) QueryRow(ctx context.Context, query string, args ...any) postgres.Row {
+	return queryRow(db.pool, db.logger, ctx, query, args...)
+}
+
+func (db *DB) Begin(ctx context.Context) (postgres.Tx, error) {
+	return begin(db.pool, db.logger, ctx)
 }

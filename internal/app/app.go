@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"github.com/adanyl0v/pocket-ideas/internal/config"
+	"github.com/adanyl0v/pocket-ideas/internal/repository/postgres"
 	"github.com/adanyl0v/pocket-ideas/pkg/database/postgres/pgx"
 	"github.com/adanyl0v/pocket-ideas/pkg/log"
 	"github.com/adanyl0v/pocket-ideas/pkg/log/slog"
+	googleuuidgen "github.com/adanyl0v/pocket-ideas/pkg/uuid/google"
 	slogzap "github.com/samber/slog-zap/v2"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -23,7 +25,11 @@ func Run() {
 	logger.With(log.Fields{"env": cfg.Env}).Info("read config")
 
 	db := mustConnectToPostgres(logger, &cfg.PostgresConfig)
-	_ = db
+	defer func() { _ = db.Close() }()
+
+	userRepo := postgres.NewUserRepository(db, logger, googleuuidgen.New())
+	_, _ = userRepo.SelectAll(context.Background())
+	_, _ = userRepo.GetByID(context.Background(), "")
 }
 
 func mustSetupLogger(env string, cfg *config.LogConfig) log.Logger {
@@ -105,6 +111,8 @@ func mustSetupLogger(env string, cfg *config.LogConfig) log.Logger {
 
 	slog.ErrorFieldKey = "error"
 	l := slog.NewLogger(stdslog.New(zapHandler))
+	l = l.With(log.Fields{"pid": os.Getpid()}).(*slog.Logger)
+
 	l.With(log.Fields{"level": cfg.Level}).Info("initialized logger")
 	return l
 }
@@ -119,7 +127,6 @@ func mustConnectToPostgres(logger log.Logger, cfg *config.PostgresConfig) *pgx.D
 		User:              cfg.User,
 		Password:          cfg.Password,
 		Database:          cfg.Database,
-		Schema:            cfg.Schema,
 		SSLMode:           cfg.SSLMode,
 		MaxConns:          cfg.MaxConns,
 		MinConns:          cfg.MinConns,

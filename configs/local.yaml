@@ -2,7 +2,7 @@
 env: "local"
 
 log:
-  # debug, info, warn, error
+  # trace, debug, info, warn, error
   level: "debug"
 
 postgres:

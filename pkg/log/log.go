@@ -1,6 +1,8 @@
 package log
 
-import "context"
+import (
+	"context"
+)
 
 type Level int
 
@@ -20,4 +22,5 @@ type Logger interface {
 	With(fields Fields) Logger
 	WithError(err error) Logger
 	WithContext(ctx context.Context) Logger
+	WithCallerSkip(skip int) Logger
 }
