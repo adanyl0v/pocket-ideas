@@ -92,3 +92,24 @@ func (dto *selectAllUsersDTO) ToDomain(user *domain.User) {
 }
 
 func (dto *selectAllUsersDTO) FromDomain(_ *domain.User) {}
+
+type selectUsersByNameDTO struct {
+	ID        string    `db:"id"`
+	Name      string    `db:"name"`
+	Email     string    `db:"email"`
+	Password  string    `db:"password"`
+	CreatedAt time.Time `db:"created_at"`
+	UpdatedAt time.Time `db:"updated_at"`
+}
+
+func (dto *selectUsersByNameDTO) ToDomain(user *domain.User) {
+	user.ID = dto.ID
+	user.Email = dto.Email
+	user.Password = dto.Password
+	user.CreatedAt = dto.CreatedAt
+	user.UpdatedAt = dto.UpdatedAt
+}
+
+func (dto *selectUsersByNameDTO) FromDomain(user *domain.User) {
+	dto.Name = user.Name
+}

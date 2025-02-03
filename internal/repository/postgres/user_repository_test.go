@@ -364,6 +364,102 @@ func TestUserRepository_SelectAll(t *testing.T) {
 	}
 }
 
+func TestUserRepository_SelectByName(t *testing.T) {
+	testCases := map[string]userTc{
+		"success": {
+			register: func(ctrl *gomock.Controller, conn *_pgdbMock.MockConn, _ *_uuidMock.MockGenerator) {
+				rows := _pgdbMock.NewMockRows(ctrl)
+				rows.EXPECT().Close().Times(1)
+
+				i, n := -1, 5
+				rows.EXPECT().Next().Times(n + 1).DoAndReturn(func() bool {
+					i++
+					return i < n
+				})
+
+				rows.EXPECT().Scan(gomock.Any(), gomock.Any(), gomock.Any(),
+					gomock.Any(), gomock.Any()).Times(n).Return(nil)
+				conn.EXPECT().Query(gomock.Any(), selectUsersByNameQuery, "").Times(1).Return(rows, nil)
+			},
+			command: func(repo *UserRepository) error {
+				_, err := repo.SelectByName(context.Background(), "")
+				return err
+			},
+			expect: func(err error) {
+				require.Nil(t, err)
+			},
+		},
+		"failed selection": {
+			register: func(_ *gomock.Controller, conn *_pgdbMock.MockConn, _ *_uuidMock.MockGenerator) {
+				conn.EXPECT().Query(gomock.Any(), selectUsersByNameQuery, "").
+					Times(1).Return(nil, errors.New(""))
+			},
+			command: func(repo *UserRepository) error {
+				_, err := repo.SelectByName(context.Background(), "")
+				return err
+			},
+			expect: func(err error) {
+				require.NotNil(t, err)
+			},
+		},
+		"no users found": {
+			register: func(ctrl *gomock.Controller, conn *_pgdbMock.MockConn, _ *_uuidMock.MockGenerator) {
+				rows := _pgdbMock.NewMockRows(ctrl)
+				rows.EXPECT().Close().Times(1)
+				rows.EXPECT().Next().Times(1).Return(false)
+				rows.EXPECT().Err().Times(1).Return(nil)
+				conn.EXPECT().Query(gomock.Any(), selectUsersByNameQuery, "").Times(1).Return(rows, nil)
+			},
+			command: func(repo *UserRepository) error {
+				_, err := repo.SelectByName(context.Background(), "")
+				return err
+			},
+			expect: func(err error) {
+				require.Equal(t, ErrNoUsersFound, err)
+			},
+		},
+		"no users selected": {
+			register: func(ctrl *gomock.Controller, conn *_pgdbMock.MockConn, _ *_uuidMock.MockGenerator) {
+				rows := _pgdbMock.NewMockRows(ctrl)
+				rows.EXPECT().Close().Times(1)
+				rows.EXPECT().Next().Times(1).Return(false)
+				rows.EXPECT().Err().Times(1).Return(errors.New(""))
+				conn.EXPECT().Query(gomock.Any(), selectUsersByNameQuery, "").Times(1).Return(rows, nil)
+			},
+			command: func(repo *UserRepository) error {
+				_, err := repo.SelectByName(context.Background(), "")
+				return err
+			},
+			expect: func(err error) {
+				require.NotNil(t, err)
+			},
+		},
+		"failed scan": {
+			register: func(ctrl *gomock.Controller, conn *_pgdbMock.MockConn, _ *_uuidMock.MockGenerator) {
+				rows := _pgdbMock.NewMockRows(ctrl)
+				rows.EXPECT().Close().Times(1)
+				rows.EXPECT().Next().Times(1).Return(true)
+				rows.EXPECT().Scan(gomock.Any(), gomock.Any(), gomock.Any(),
+					gomock.Any(), gomock.Any()).Times(1).Return(errors.New(""))
+				conn.EXPECT().Query(gomock.Any(), selectUsersByNameQuery, "").Times(1).Return(rows, nil)
+			},
+			command: func(repo *UserRepository) error {
+				_, err := repo.SelectByName(context.Background(), "")
+				return err
+			},
+			expect: func(err error) {
+				require.NotNil(t, err)
+			},
+		},
+	}
+
+	for name, tc := range testCases {
+		t.Run(name, func(t *testing.T) {
+			runUserTestCase(t, &tc)
+		})
+	}
+}
+
 // runUserTestCase should be called by [t.Run] to enable
 // the Run gutter icon (at least in Goland from JetBrains)
 //

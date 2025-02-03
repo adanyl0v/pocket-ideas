@@ -181,7 +181,7 @@ FROM users
 func (r *UserRepository) SelectAll(ctx context.Context) ([]domain.User, error) {
 	rows, err := r.conn.Query(ctx, selectAllUsersQuery)
 	if err != nil {
-		r.logger.WithError(err).Error("failed to select all users")
+		r.logger.WithError(err).Error("failed to select users")
 		return nil, err
 	}
 	defer rows.Close()
@@ -205,7 +205,7 @@ func (r *UserRepository) SelectAll(ctx context.Context) ([]domain.User, error) {
 		if err = rows.Scan(&dto.ID, &dto.Name, &dto.Email, &dto.Password,
 			&dto.CreatedAt, &dto.UpdatedAt); err != nil {
 
-			r.logger.WithError(err).Error("failed to scan all users")
+			r.logger.WithError(err).Error("failed to scan users")
 			return nil, err
 		}
 
@@ -220,9 +220,56 @@ func (r *UserRepository) SelectAll(ctx context.Context) ([]domain.User, error) {
 	return users, nil
 }
 
+const selectUsersByNameQuery = `
+SELECT id, email, password, created_at, updated_at
+FROM users WHERE name = $1
+`
+
 func (r *UserRepository) SelectByName(ctx context.Context, name string) ([]domain.User, error) {
-	// TODO implement me
-	panic("implement me")
+	rows, err := r.conn.Query(ctx, selectUsersByNameQuery, name)
+	if err != nil {
+		r.logger.WithError(err).Error("failed to select users by name")
+		return nil, err
+	}
+	defer rows.Close()
+
+	next := rows.Next()
+	if !next {
+		err = rows.Err()
+		if err == nil {
+			err = proxerr.New(ErrNoUsersFound, pgdb.ErrNoRows.Error())
+			r.logger.Warn(ErrNoUsersFound.Error())
+		} else {
+			r.logger.WithError(err).Error("no users selected")
+		}
+
+		return nil, err
+	}
+
+	users := make([]domain.User, 0, 4)
+	for next {
+		user := domain.User{Name: name}
+		var dto selectUsersByNameDTO
+		dto.FromDomain(&user)
+
+		if err = rows.Scan(&dto.ID, &dto.Email, &dto.Password,
+			&dto.CreatedAt, &dto.UpdatedAt); err != nil {
+
+			r.logger.WithError(err).Error("failed to scan users")
+			return nil, err
+		}
+
+		dto.ToDomain(&user)
+		users = append(users, user)
+
+		next = rows.Next()
+	}
+
+	r.logger.With(log.Fields{
+		"name":   name,
+		"amount": len(users),
+	}).Debug("got users by name")
+	return users, nil
 }
 
 func (r *UserRepository) UpdateByID(ctx context.Context, user *domain.User) error {
