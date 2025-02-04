@@ -1,6 +1,3 @@
-# This workflow will build a golang project
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-go
-
 name: Go
 
 on:
@@ -35,3 +32,11 @@ jobs:
 
     - name: Test
       run: go test -v -cover ./...
+
+    - name: Build And Push Docker Image
+      uses: mr-smithers-excellent/docker-build-push@v6
+      with:
+        image: adanylov39/pocket-ideas
+        registry: docker.io
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
