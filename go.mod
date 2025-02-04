@@ -1,6 +1,6 @@
 module github.com/adanyl0v/pocket-ideas
 
-go 1.24rc2
+go 1.23.5
 
 require (
 	github.com/golang/mock v1.6.0
