@@ -140,3 +140,13 @@ func (dto *updateUserByIdDTO) FromDomain(user *domain.User) {
 		dto.Password = pgtype.Text{String: user.Password, Valid: true}
 	}
 }
+
+type deleteUserByIdDTO struct {
+	ID string `db:"id"`
+}
+
+func (dto *deleteUserByIdDTO) ToDomain(_ *domain.User) {}
+
+func (dto *deleteUserByIdDTO) FromDomain(user *domain.User) {
+	dto.ID = user.ID
+}

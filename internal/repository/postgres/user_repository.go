@@ -51,7 +51,9 @@ func (r *UserRepository) Begin(ctx context.Context) (repository.Tx, error) {
 func (r *UserRepository) WithTx(tx repository.Tx) repository.Repository {
 	conn, ok := tx.(pgdb.Tx)
 	if !ok {
-		r.logger.With(log.Fields{"transaction": tx}).Warn("unsupported transaction type")
+		r.logger.With(log.Fields{
+			"transaction": tx,
+		}).Warn("unsupported transaction type")
 		return nil
 	}
 
@@ -313,7 +315,9 @@ func (r *UserRepository) UpdateByID(ctx context.Context, user *domain.User) erro
 			}
 		}
 
-		r.logger.WithError(err).Error("failed to update user by id")
+		r.logger.With(log.Fields{
+			"id": dto.ID,
+		}).WithError(err).Error("failed to update user by id")
 		return err
 	}
 
@@ -324,7 +328,35 @@ func (r *UserRepository) UpdateByID(ctx context.Context, user *domain.User) erro
 	return nil
 }
 
+const deleteUserByIdQuery = `
+DELETE FROM users WHERE id = $1
+`
+
 func (r *UserRepository) DeleteByID(ctx context.Context, id string) error {
-	// TODO implement me
-	panic("implement me")
+	user := domain.User{ID: id}
+	var dto deleteUserByIdDTO
+	dto.FromDomain(&user)
+
+	if err := r.conn.Exec(ctx, deleteUserByIdQuery, dto.ID); err != nil {
+		var pxErr proxerr.Error
+		if errors.As(err, &pxErr) {
+			switch e := pxErr.Unwrap(); {
+			case errors.Is(e, pgdb.ErrForeignKeyViolation):
+				r.logger.With(log.Fields{
+					"id": dto.ID,
+				}).Warn("tried to delete a nonexistent user")
+				return proxerr.New(ErrNonexistentUserPrimaryKey, err.Error())
+			}
+		}
+
+		r.logger.With(log.Fields{
+			"id": dto.ID,
+		}).WithError(err).Warn("failed to delete user by id")
+		return err
+	}
+
+	r.logger.With(log.Fields{
+		"id": dto.ID,
+	}).Debug("deleted user by id")
+	return nil
 }
