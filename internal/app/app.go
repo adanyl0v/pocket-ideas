@@ -28,8 +28,7 @@ func Run() {
 	defer func() { _ = db.Close() }()
 
 	userRepo := postgres.NewUserRepository(db, logger, googleuuidgen.New())
-	_, _ = userRepo.SelectAll(context.Background())
-	_, _ = userRepo.GetByID(context.Background(), "")
+	_ = userRepo
 }
 
 func mustSetupLogger(env string, cfg *config.LogConfig) log.Logger {
