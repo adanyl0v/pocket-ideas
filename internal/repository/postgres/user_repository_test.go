@@ -11,6 +11,7 @@ import (
 	"github.com/adanyl0v/pocket-ideas/pkg/log/slog"
 	"github.com/adanyl0v/pocket-ideas/pkg/proxerr"
 	"github.com/golang/mock/gomock"
+	"github.com/jackc/pgx/v5/pgtype"
 	slogzap "github.com/samber/slog-zap/v2"
 	"github.com/stretchr/testify/require"
 	stdslog "log/slog"
@@ -24,7 +25,7 @@ type (
 		expect   userTcExpect
 	}
 
-	userTcRegister func(ctrl *gomock.Controller, conn *_pgdbMock.MockConn, idGen *_uuidMock.MockGenerator)
+	userTcRegister func(ctrl *gomock.Controller, conn *_pgdbMock.MockConn, _ *_uuidMock.MockGenerator)
 	userTcCommand  func(repo *UserRepository) error
 	userTcExpect   func(err error)
 )
@@ -446,6 +447,95 @@ func TestUserRepository_SelectByName(t *testing.T) {
 			command: func(repo *UserRepository) error {
 				_, err := repo.SelectByName(context.Background(), "")
 				return err
+			},
+			expect: func(err error) {
+				require.NotNil(t, err)
+			},
+		},
+	}
+
+	for name, tc := range testCases {
+		t.Run(name, func(t *testing.T) {
+			runUserTestCase(t, &tc)
+		})
+	}
+}
+
+func TestUserRepository_UpdateByID(t *testing.T) {
+	user := domain.User{
+		ID:       "a-1-b-2-c-3-d-4",
+		Name:     "test",
+		Email:    "test@email.com",
+		Password: "password",
+	}
+
+	testCases := map[string]userTc{
+		"success": {
+			register: func(ctrl *gomock.Controller, conn *_pgdbMock.MockConn, _ *_uuidMock.MockGenerator) {
+				conn.EXPECT().Exec(gomock.Any(), updateUserByIdQuery, gomock.Any(), gomock.Any(),
+					gomock.Any(), gomock.Any(), gomock.Any()).Times(1).Return(nil)
+			},
+			command: func(repo *UserRepository) error {
+				return repo.UpdateByID(context.Background(), &user)
+			},
+			expect: func(err error) {
+				require.Nil(t, err)
+			},
+		},
+		"unique violation": {
+			register: func(ctrl *gomock.Controller, conn *_pgdbMock.MockConn, _ *_uuidMock.MockGenerator) {
+				conn.EXPECT().Exec(gomock.Any(), updateUserByIdQuery, gomock.Any(), gomock.Any(), gomock.Any(),
+					gomock.Any(), gomock.Any()).Times(1).Return(proxerr.New(pgdb.ErrUniqueViolation, ""))
+			},
+			command: func(repo *UserRepository) error {
+				return repo.UpdateByID(context.Background(), &user)
+			},
+			expect: func(err error) {
+				require.Equal(t, ErrUserUniqueViolation, err)
+			},
+		},
+		"not null violation": {
+			register: func(ctrl *gomock.Controller, conn *_pgdbMock.MockConn, _ *_uuidMock.MockGenerator) {
+				conn.EXPECT().Exec(gomock.Any(), updateUserByIdQuery, gomock.Any(), gomock.Any(),
+					pgtype.Text{String: "", Valid: false}, gomock.Any(), gomock.Any()).Times(1).
+					Return(proxerr.New(pgdb.ErrNotNullViolation, ""))
+			},
+			command: func(repo *UserRepository) error {
+				return repo.UpdateByID(context.Background(), &domain.User{
+					ID:       user.ID,
+					Name:     user.Name,
+					Email:    user.Email,
+					Password: "", // means nil to repository
+				})
+			},
+			expect: func(err error) {
+				require.Equal(t, ErrUserNullViolation, err)
+			},
+		},
+		"foreign key violation": {
+			register: func(ctrl *gomock.Controller, conn *_pgdbMock.MockConn, _ *_uuidMock.MockGenerator) {
+				conn.EXPECT().Exec(gomock.Any(), updateUserByIdQuery, gomock.Any(), gomock.Any(), gomock.Any(),
+					gomock.Any(), "").Times(1).Return(proxerr.New(pgdb.ErrForeignKeyViolation, ""))
+			},
+			command: func(repo *UserRepository) error {
+				return repo.UpdateByID(context.Background(), &domain.User{
+					ID:       "",
+					Name:     user.Name,
+					Email:    user.Email,
+					Password: user.Password,
+				})
+			},
+			expect: func(err error) {
+				require.Equal(t, ErrNonexistentUserPrimaryKey, err)
+			},
+		},
+		"failure": {
+			register: func(ctrl *gomock.Controller, conn *_pgdbMock.MockConn, _ *_uuidMock.MockGenerator) {
+				conn.EXPECT().Exec(gomock.Any(), updateUserByIdQuery, gomock.Any(), gomock.Any(), gomock.Any(),
+					gomock.Any(), gomock.Any()).Times(1).Return(errors.New(""))
+			},
+			command: func(repo *UserRepository) error {
+				return repo.UpdateByID(context.Background(), &user)
 			},
 			expect: func(err error) {
 				require.NotNil(t, err)
