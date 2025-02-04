@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"github.com/adanyl0v/pocket-ideas/internal/domain"
+	"github.com/jackc/pgx/v5/pgtype"
 	"time"
 )
 
@@ -112,4 +113,40 @@ func (dto *selectUsersByNameDTO) ToDomain(user *domain.User) {
 
 func (dto *selectUsersByNameDTO) FromDomain(user *domain.User) {
 	dto.Name = user.Name
+}
+
+type updateUserByIdDTO struct {
+	ID        string      `db:"id"`
+	Name      pgtype.Text `db:"name"`
+	Email     pgtype.Text `db:"email"`
+	Password  pgtype.Text `db:"password"`
+	UpdatedAt time.Time   `db:"updated_at"`
+}
+
+func (dto *updateUserByIdDTO) ToDomain(user *domain.User) {
+	user.UpdatedAt = dto.UpdatedAt
+}
+
+func (dto *updateUserByIdDTO) FromDomain(user *domain.User) {
+	dto.ID = user.ID
+
+	if user.Name != "" {
+		dto.Name = pgtype.Text{String: user.Name, Valid: true}
+	}
+	if user.Email != "" {
+		dto.Email = pgtype.Text{String: user.Email, Valid: true}
+	}
+	if user.Password != "" {
+		dto.Password = pgtype.Text{String: user.Password, Valid: true}
+	}
+}
+
+type deleteUserByIdDTO struct {
+	ID string `db:"id"`
+}
+
+func (dto *deleteUserByIdDTO) ToDomain(_ *domain.User) {}
+
+func (dto *deleteUserByIdDTO) FromDomain(user *domain.User) {
+	dto.ID = user.ID
 }

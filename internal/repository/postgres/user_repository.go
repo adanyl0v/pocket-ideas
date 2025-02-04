@@ -13,9 +13,12 @@ import (
 )
 
 var (
-	ErrUserExists   = errors.New("user already exists")
-	ErrUserNotFound = errors.New("user not found")
-	ErrNoUsersFound = errors.New("no users found")
+	ErrUserExists                = errors.New("user already exists")
+	ErrUserNotFound              = errors.New("user not found")
+	ErrNoUsersFound              = errors.New("no users found")
+	ErrUserUniqueViolation       = errors.New("violated unique constraint")
+	ErrUserNullViolation         = errors.New("violated not null constraint")
+	ErrNonexistentUserPrimaryKey = errors.New("nonexistent user primary key")
 
 	errGenerateUserId = errors.New("failed to generate user id")
 )
@@ -48,7 +51,9 @@ func (r *UserRepository) Begin(ctx context.Context) (repository.Tx, error) {
 func (r *UserRepository) WithTx(tx repository.Tx) repository.Repository {
 	conn, ok := tx.(pgdb.Tx)
 	if !ok {
-		r.logger.With(log.Fields{"transaction": tx}).Warn("unsupported transaction type")
+		r.logger.With(log.Fields{
+			"transaction": tx,
+		}).Warn("unsupported transaction type")
 		return nil
 	}
 
@@ -272,12 +277,86 @@ func (r *UserRepository) SelectByName(ctx context.Context, name string) ([]domai
 	return users, nil
 }
 
+const updateUserByIdQuery = `
+UPDATE users SET name = $1, email = $2, password = $3, updated_at = $4
+WHERE id = $5
+`
+
 func (r *UserRepository) UpdateByID(ctx context.Context, user *domain.User) error {
-	// TODO implement me
-	panic("implement me")
+	var dto updateUserByIdDTO
+	dto.FromDomain(user)
+
+	dto.UpdatedAt = time.Now()
+	if err := r.conn.Exec(ctx, updateUserByIdQuery, dto.Name, dto.Email,
+		dto.Password, dto.UpdatedAt, dto.ID); err != nil {
+
+		var pxErr proxerr.Error
+		if errors.As(err, &pxErr) {
+			switch e := pxErr.Unwrap(); {
+			case errors.Is(e, pgdb.ErrUniqueViolation):
+				r.logger.With(log.Fields{
+					"id":    dto.ID,
+					"email": dto.Email,
+				}).Warn("tried to update user with an existing email")
+				return proxerr.New(ErrUserUniqueViolation, err.Error())
+			case errors.Is(e, pgdb.ErrNotNullViolation):
+				r.logger.With(log.Fields{
+					"id":             dto.ID,
+					"name":           dto.Name.String,
+					"email":          dto.Email.String,
+					"password_valid": dto.Password.Valid,
+				}).Warn("tried to update user with null data")
+				return proxerr.New(ErrUserNullViolation, err.Error())
+			case errors.Is(e, pgdb.ErrForeignKeyViolation):
+				r.logger.With(log.Fields{
+					"id": dto.ID,
+				}).Warn("tried to update a nonexistent user")
+				return proxerr.New(ErrNonexistentUserPrimaryKey, err.Error())
+			}
+		}
+
+		r.logger.With(log.Fields{
+			"id": dto.ID,
+		}).WithError(err).Error("failed to update user by id")
+		return err
+	}
+
+	r.logger.With(log.Fields{
+		"id": dto.ID,
+	}).Debug("updated user by id")
+	dto.ToDomain(user)
+	return nil
 }
 
+const deleteUserByIdQuery = `
+DELETE FROM users WHERE id = $1
+`
+
 func (r *UserRepository) DeleteByID(ctx context.Context, id string) error {
-	// TODO implement me
-	panic("implement me")
+	user := domain.User{ID: id}
+	var dto deleteUserByIdDTO
+	dto.FromDomain(&user)
+
+	if err := r.conn.Exec(ctx, deleteUserByIdQuery, dto.ID); err != nil {
+		var pxErr proxerr.Error
+		if errors.As(err, &pxErr) {
+			switch e := pxErr.Unwrap(); {
+			case errors.Is(e, pgdb.ErrForeignKeyViolation):
+				r.logger.With(log.Fields{
+					"id": dto.ID,
+				}).Warn("tried to delete a nonexistent user")
+				return proxerr.New(ErrNonexistentUserPrimaryKey, err.Error())
+			}
+		}
+
+		r.logger.With(log.Fields{
+			"id": dto.ID,
+		}).WithError(err).Warn("failed to delete user by id")
+		return err
+	}
+
+	r.logger.With(log.Fields{
+		"id": dto.ID,
+	}).Debug("deleted user by id")
+	return nil
 }
