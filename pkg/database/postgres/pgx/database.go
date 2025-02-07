@@ -65,7 +65,7 @@ func Connect(ctx context.Context, config *Config, logger log.Logger) (*DB, error
 		"port":     config.Port,
 		"database": config.Database,
 		"sslmode":  config.SSLMode,
-	}).Debug("parsed the connection config")
+	}).Debug("parsed the postgres connection config")
 
 	c.MaxConns = int32(config.MaxConns)
 	c.MinConns = int32(config.MinConns)
@@ -81,7 +81,7 @@ func Connect(ctx context.Context, config *Config, logger log.Logger) (*DB, error
 
 	pool, err := pgxpool.NewWithConfig(ctx, c)
 	if err != nil {
-		logger.WithError(err).Error("failed to create a new connection pool")
+		logger.WithError(err).Error("failed to create a new postgres connection pool")
 		return nil, err
 	}
 	logger.With(log.Fields{
@@ -90,10 +90,10 @@ func Connect(ctx context.Context, config *Config, logger log.Logger) (*DB, error
 		"max_conn_lifetime":   c.MaxConnLifetime,
 		"max_conn_idle_time":  c.MaxConnIdleTime,
 		"health_check_period": c.HealthCheckPeriod,
-	}).Debug("created a new connection pool")
+	}).Debug("created a new postgres connection pool")
 
 	if err = pool.Ping(ctx); err != nil {
-		logger.WithError(err).Error("failed to ping the connection")
+		logger.WithError(err).Error("failed to ping the postgres connection")
 		return nil, err
 	}
 
@@ -102,7 +102,7 @@ func Connect(ctx context.Context, config *Config, logger log.Logger) (*DB, error
 		"acquired_total": stat.AcquireCount(),
 		"acquired_now":   stat.AcquiredConns(),
 		"acquired_empty": stat.EmptyAcquireCount(),
-	}).Debug("pinged the connection")
+	}).Debug("pinged the postgres connection")
 
 	return New(pool, logger.WithCallerSkip(1)), nil
 }
