@@ -23,13 +23,13 @@ func Run() {
 	logger := mustSetupLogger(cfg.Env, &cfg.Log)
 	logger.With(log.Fields{"env": cfg.Env}).Info("read config")
 
-	db := mustConnectToPostgres(logger, &cfg.PostgresConfig)
-	defer func() { _ = db.Close() }()
+	postgresDb := mustConnectToPostgres(logger, &cfg.PostgresConfig)
+	defer func() { _ = postgresDb.Close() }()
 
 	redisCache := mustConnectToRedis(logger, &cfg.RedisConfig)
 	defer func() { _ = redisCache.Close() }()
 
-	userRepo := postgres.NewUserRepository(db, logger, googleuuidgen.New())
+	userRepo := postgres.NewUserRepository(postgresDb, logger, googleuuidgen.New())
 	_ = userRepo
 }
 
@@ -150,12 +150,20 @@ func mustConnectToRedis(logger log.Logger, cfg *config.RedisConfig) *redis.Clien
 	defer cancel()
 
 	client, err := redis.Connect(ctx, logger, &redis.Config{
-		Host:        cfg.Host,
-		Port:        cfg.Port,
-		User:        cfg.User,
-		Password:    cfg.Password,
-		Database:    cfg.Database,
-		DialTimeout: cfg.DialTimeout,
+		Host:            cfg.Host,
+		Port:            cfg.Port,
+		User:            cfg.User,
+		Password:        cfg.Password,
+		Database:        cfg.Database,
+		DialTimeout:     cfg.DialTimeout,
+		ReadTimeout:     cfg.ReadTimeout,
+		WriteTimeout:    cfg.WriteTimeout,
+		MinIdleConns:    cfg.MinIdleConns,
+		MaxIdleConns:    cfg.MaxIdleConns,
+		MaxActiveConns:  cfg.MaxActiveConns,
+		ConnMaxIdleTime: cfg.ConnMaxIdleTime,
+		ConnMaxLifetime: cfg.ConnMaxLifetime,
+		TLSConfig:       nil,
 	})
 	if err != nil {
 		panic(err)

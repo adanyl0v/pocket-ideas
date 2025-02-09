@@ -109,6 +109,7 @@ func Connect(ctx context.Context, config *Config, logger log.Logger) (*DB, error
 
 func (db *DB) Close() error {
 	db.pool.Close()
+	db.logger.Debug("closed the postgres connection")
 	return nil
 }
 
