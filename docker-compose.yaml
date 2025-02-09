@@ -13,7 +13,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
     restart: always
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      test: ['CMD-SHELL', 'pg_isready', '-U', '${POSTGRES_USER}', '-d', '${POSTGRES_DATABASE}']
       interval: 5s
       timeout: 5s
       retries: 5
@@ -38,5 +38,31 @@ services:
     healthcheck:
       test: ['CMD', 'pg_isready', '-h', 'localhost']
 
+  redis:
+    image: redis/redis-stack:latest
+    container_name: redis-stack
+    ports:
+      - '${REDIS_CONTAINER_OUTER_PORT}:${REDIS_CONTAINER_INNER_PORT}'
+    environment:
+      REDIS_USER: '${REDIS_USER}'
+      REDIS_USER_PASSWORD: '${REDIS_USER_PASSWORD}'
+      REDIS_PASSWORD: '${REDIS_PASSWORD}'
+    volumes:
+      - redis_data:/var/lib/redis/data
+      - ./configs/redis/redis.conf:/usr/local/etc/redis/redis.conf
+    restart: always
+    command: >
+      sh -c '
+        echo "user default off" > /usr/local/etc/redis/users.acl
+        echo "user $REDIS_USER on ~* +@all >$REDIS_USER_PASSWORD" >> /usr/local/etc/redis/users.acl
+        redis-server /usr/local/etc/redis/redis.conf --aclfile /usr/local/etc/redis/users.acl
+      '
+    healthcheck:
+      test: [ 'CMD', 'redis-cli', '-a', '$REDIS_PASSWORD', 'ping' ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
 volumes:
   postgres_data:
+  redis_data:
