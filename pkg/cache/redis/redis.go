@@ -122,14 +122,21 @@ func (c *Client) SetJSON(ctx context.Context, key, path string, value any, expir
 		"exp":  expiration,
 	})
 
-	cmd := c.client.JSONSet(ctx, key, path, value)
-	if err := cmd.Err(); err != nil {
-		logger.WithError(err).Debug("failed to set the key")
-		return err
-	}
+	if _, err := c.client.TxPipelined(ctx, func(p redis.Pipeliner) error {
+		if err := p.JSONSet(ctx, key, path, value).Err(); err != nil {
+			logger.WithError(err).Debug("failed to set the key")
+			p.Discard()
+			return err
+		}
 
-	if err := c.client.Expire(ctx, key, expiration).Err(); err != nil {
-		logger.WithError(err).Debug("failed to expire the key")
+		if err := p.Expire(ctx, key, expiration).Err(); err != nil {
+			logger.WithError(err).Debug("failed to expire the key")
+			p.Discard()
+			return err
+		}
+
+		return nil
+	}); err != nil {
 		return err
 	}
 
