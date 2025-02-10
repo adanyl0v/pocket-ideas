@@ -56,7 +56,7 @@ func (c *Client) Close() error {
 		return err
 	}
 
-	c.logger.Debug("closed the redis connection")
+	c.logger.Info("closed the redis connection")
 	return nil
 }
 
@@ -191,6 +191,7 @@ func Connect(ctx context.Context, logger log.Logger, config *Config) (*Client, e
 	}
 	logger.With(log.Fields{
 		"addr":          opts.Addr,
+		"user":          opts.Username,
 		"database":      opts.DB,
 		"dial_timeout":  opts.DialTimeout,
 		"read_timeout":  opts.ReadTimeout,
