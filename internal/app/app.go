@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"github.com/adanyl0v/pocket-ideas/internal/config"
+	pgrepo "github.com/adanyl0v/pocket-ideas/internal/repository/postgres"
 	"github.com/adanyl0v/pocket-ideas/pkg/cache/redis"
 	postgres "github.com/adanyl0v/pocket-ideas/pkg/database/postgres/pgx"
 	"github.com/adanyl0v/pocket-ideas/pkg/log"
 	"github.com/adanyl0v/pocket-ideas/pkg/log/slog"
+	googleuuidgen "github.com/adanyl0v/pocket-ideas/pkg/uuid/google"
 	slogzap "github.com/samber/slog-zap/v2"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -22,11 +24,14 @@ func Run() {
 	logger := mustSetupLogger(cfg.Env, &cfg.Log)
 	logger.With(log.Fields{"env": cfg.Env}).Info("read config")
 
-	redisDb := mustConnectToPostgres(logger, &cfg.PostgresConfig)
-	defer redisDb.Close()
+	postgresDb := mustConnectToPostgres(logger, &cfg.PostgresConfig)
+	defer postgresDb.Close()
 
 	redisCache := mustConnectToRedis(logger, &cfg.RedisConfig)
 	defer func() { _ = redisCache.Close() }()
+
+	userRepo := pgrepo.NewUserRepository(postgresDb, logger, googleuuidgen.New())
+	_ = userRepo
 }
 
 func mustSetupLogger(env string, cfg *config.LogConfig) log.Logger {
