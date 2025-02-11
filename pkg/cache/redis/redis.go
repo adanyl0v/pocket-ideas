@@ -52,7 +52,7 @@ func New(client *redis.Client, logger log.Logger) *Client {
 
 func (c *Client) Close() error {
 	if err := c.client.Close(); err != nil {
-		c.logger.WithError(err).Debug("failed to close the redis connection")
+		c.logger.WithError(err).Error("failed to close the redis connection")
 		return err
 	}
 
@@ -66,11 +66,11 @@ func (c *Client) Get(ctx context.Context, key string, dest any) error {
 	cmd := c.client.Get(ctx, key)
 	if err := cmd.Err(); err != nil {
 		if errors.Is(err, redis.Nil) {
-			logger.WithError(err).Debug("key does not exist")
+			logger.WithError(err).Error("key does not exist")
 			return proxerr.New(ErrNonexistentKey, err.Error())
 		}
 
-		logger.WithError(err).Debug("failed to get the key")
+		logger.WithError(err).Error("failed to get the key")
 		return err
 	}
 
@@ -87,11 +87,11 @@ func (c *Client) GetJSON(ctx context.Context, key, path string, dest any) error 
 	cmd := c.client.JSONGet(ctx, key, path)
 	if err := cmd.Err(); err != nil {
 		if errors.Is(err, redis.Nil) {
-			logger.WithError(err).Debug("key does not exist")
+			logger.WithError(err).Error("key does not exist")
 			return proxerr.New(ErrNonexistentKey, err.Error())
 		}
 
-		logger.WithError(err).Debug("failed to get the key")
+		logger.WithError(err).Error("failed to get the key")
 		return err
 	}
 
@@ -107,7 +107,7 @@ func (c *Client) Set(ctx context.Context, key string, value any, expiration time
 
 	cmd := c.client.Set(ctx, key, value, expiration)
 	if err := cmd.Err(); err != nil {
-		logger.WithError(err).Debug("failed to set the key")
+		logger.WithError(err).Error("failed to set the key")
 		return err
 	}
 
@@ -124,13 +124,13 @@ func (c *Client) SetJSON(ctx context.Context, key, path string, value any, expir
 
 	if _, err := c.client.TxPipelined(ctx, func(p redis.Pipeliner) error {
 		if err := p.JSONSet(ctx, key, path, value).Err(); err != nil {
-			logger.WithError(err).Debug("failed to set the key")
+			logger.WithError(err).Error("failed to set the key")
 			p.Discard()
 			return err
 		}
 
 		if err := p.Expire(ctx, key, expiration).Err(); err != nil {
-			logger.WithError(err).Debug("failed to expire the key")
+			logger.WithError(err).Error("failed to expire the key")
 			p.Discard()
 			return err
 		}
@@ -149,7 +149,7 @@ func (c *Client) Delete(ctx context.Context, keys ...string) error {
 
 	cmd := c.client.Del(ctx, keys...)
 	if err := cmd.Err(); err != nil {
-		logger.WithError(err).Debug("failed to delete the keys")
+		logger.WithError(err).Error("failed to delete the keys")
 		return err
 	}
 
@@ -165,12 +165,25 @@ func (c *Client) DeleteJSON(ctx context.Context, key, path string) error {
 
 	cmd := c.client.JSONDel(ctx, key, path)
 	if err := cmd.Err(); err != nil {
-		logger.WithError(err).Debug("failed to delete the key")
+		logger.WithError(err).Error("failed to delete the key")
 		return err
 	}
 
 	logger.Debug("deleted the key")
 	return nil
+}
+
+func (c *Client) Exists(ctx context.Context, keys ...string) (int64, error) {
+	logger := c.logger.With(log.Fields{"keys": keys})
+
+	n, err := c.client.Exists(ctx, keys...).Result()
+	if err != nil {
+		logger.WithError(err).Error("failed to get the keys")
+		return 0, err
+	}
+
+	logger.Debug(fmt.Sprintf("%d/%d exists", n, len(keys)))
+	return n, nil
 }
 
 func Connect(ctx context.Context, logger log.Logger, config *Config) (*Client, error) {
