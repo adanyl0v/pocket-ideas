@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"fmt"
 	"github.com/adanyl0v/pocket-ideas/internal/domain"
 	"github.com/adanyl0v/pocket-ideas/internal/repository"
 	"github.com/adanyl0v/pocket-ideas/pkg/database"
@@ -138,9 +139,48 @@ func (r *UserRepository) FindByEmail(ctx context.Context, email string) (domain.
 	return user, nil
 }
 
+const qFindAllUsers = `
+SELECT id, name, email, password, created_at, updated_at
+FROM users
+`
+
 func (r *UserRepository) FindAll(ctx context.Context) ([]domain.User, error) {
-	// TODO implement me
-	panic("implement me")
+	var err error
+	defer func() {
+		if err != nil {
+			r.logger.WithError(err).Error("failed to find all users")
+		}
+	}()
+
+	users := make([]domain.User, 0)
+	rows, err := r.conn.Query(ctx, qFindAllUsers)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		dto := newFindAllUsersDto()
+		if err = rows.Scan(&dto.ID, &dto.Name, &dto.Email, &dto.Password, &dto.CreatedAt, &dto.UpdatedAt); err != nil {
+			return nil, err
+		}
+
+		var user domain.User
+		dto.ToDomain(&user)
+		users = append(users, user)
+	}
+
+	if err = rows.Err(); err != nil {
+		var pxErr proxerr.Error
+		if errors.As(err, &pxErr) && errors.Is(pxErr.Unwrap(), database.ErrNoRows) {
+			err = proxerr.New(ErrUserNotFound, pxErr.Error())
+		}
+
+		return nil, err
+	}
+
+	r.logger.Debug(fmt.Sprintf("found %d users", len(users)))
+	return users, nil
 }
 
 func (r *UserRepository) FindByName(ctx context.Context, name string) ([]domain.User, error) {
