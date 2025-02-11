@@ -145,3 +145,13 @@ func newUpdateUserByIdDto(u *domain.User) updateUserByIdDto {
 func (d *updateUserByIdDto) ToDomain(u *domain.User) {
 	u.UpdatedAt = d.UpdatedAt
 }
+
+type deleteUserByIdDto struct {
+	ID zeronull.UUID `json:"id" db:"id"`
+}
+
+func newDeleteUserByIdDto(id string) deleteUserByIdDto {
+	return deleteUserByIdDto{
+		ID: zeronull.UUID([]byte(id)),
+	}
+}

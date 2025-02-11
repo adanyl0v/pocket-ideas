@@ -526,6 +526,58 @@ func TestUserRepository_UpdateById(t *testing.T) {
 	}
 }
 
+func TestUserRepository_DeleteById(t *testing.T) {
+	const id = "0194f5da-6239-70a8-b70d-bebbe9c835b6"
+	tcs := map[string]userTestCase{
+		"SUCCESS": {
+			reg: func(ctrl *gomock.Controller, conn *_dbMock.MockConn, _ *_uuidMock.MockGenerator) {
+				result := _dbMock.NewMockResult(ctrl)
+				result.EXPECT().RowsAffected().Times(1).Return(int64(1))
+
+				conn.EXPECT().Execute(gomock.Any(), qDeleteUserById, gomock.Any()).Times(1).Return(result, nil)
+			},
+			cmd: func(repo *UserRepository) error {
+				return repo.DeleteById(context.Background(), id)
+			},
+			exp: func(err error) {
+				require.NoError(t, err)
+			},
+		},
+		"FAILED no rows were affected": {
+			reg: func(ctrl *gomock.Controller, conn *_dbMock.MockConn, _ *_uuidMock.MockGenerator) {
+				result := _dbMock.NewMockResult(ctrl)
+				result.EXPECT().RowsAffected().Times(1).Return(int64(0))
+
+				conn.EXPECT().Execute(gomock.Any(), qDeleteUserById, gomock.Any()).Times(1).Return(result, nil)
+			},
+			cmd: func(repo *UserRepository) error {
+				return repo.DeleteById(context.Background(), id)
+			},
+			exp: func(err error) {
+				require.Error(t, err)
+			},
+		},
+		"FAILED": {
+			reg: func(ctrl *gomock.Controller, conn *_dbMock.MockConn, _ *_uuidMock.MockGenerator) {
+				conn.EXPECT().Execute(gomock.Any(), qDeleteUserById, gomock.Any()).Times(1).
+					Return(nil, errors.New(""))
+			},
+			cmd: func(repo *UserRepository) error {
+				return repo.DeleteById(context.Background(), id)
+			},
+			exp: func(err error) {
+				require.Error(t, err)
+			},
+		},
+	}
+
+	for name, tc := range tcs {
+		t.Run(name, func(t *testing.T) {
+			runUserTestCase(t, &tc)
+		})
+	}
+}
+
 // runUserTestCase should be called by [testing.T.Run]
 func runUserTestCase(t *testing.T, tc *userTestCase) {
 	ctrl := gomock.NewController(t)

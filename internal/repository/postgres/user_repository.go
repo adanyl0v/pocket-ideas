@@ -275,7 +275,31 @@ func (r *UserRepository) UpdateById(ctx context.Context, user *domain.User) erro
 	return nil
 }
 
+const qDeleteUserById = `
+DELETE FROM users WHERE id = $1
+`
+
 func (r *UserRepository) DeleteById(ctx context.Context, id string) error {
-	// TODO implement me
-	panic("implement me")
+	logger := r.logger.With(log.Fields{"id": id})
+
+	var err error
+	defer func() {
+		if err != nil {
+			logger.WithError(err).Error("failed to delete user by id")
+		}
+	}()
+
+	dto := newDeleteUserByIdDto(id)
+	res, err := r.conn.Execute(ctx, qDeleteUserById, dto.ID)
+	if err != nil {
+		return err
+	}
+
+	if res.RowsAffected() == 0 {
+		err = errors.New("no rows were affected")
+		return err
+	}
+
+	logger.Debug("deleted user by id")
+	return nil
 }
