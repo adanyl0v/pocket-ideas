@@ -189,6 +189,66 @@ func TestUserRepository_FindById(t *testing.T) {
 	}
 }
 
+func TestUserRepository_FindByEmail(t *testing.T) {
+	const email = "user@example.com"
+	tcs := map[string]userTestCase{
+		"SUCCESS": {
+			reg: func(ctrl *gomock.Controller, conn *_dbMock.MockConn, _ *_uuidMock.MockGenerator) {
+				row := _dbMock.NewMockRow(ctrl)
+				row.EXPECT().Scan(gomock.Any(), gomock.Any(), gomock.Any(),
+					gomock.Any(), gomock.Any()).Times(1).Return(nil)
+
+				conn.EXPECT().QueryRow(gomock.Any(), qFindUserByEmail, email).Times(1).Return(row)
+			},
+			cmd: func(repo *UserRepository) error {
+				_, err := repo.FindByEmail(context.Background(), email)
+				return err
+			},
+			exp: func(err error) {
+				require.NoError(t, err)
+			},
+		},
+		"FAILED user not found": {
+			reg: func(ctrl *gomock.Controller, conn *_dbMock.MockConn, _ *_uuidMock.MockGenerator) {
+				row := _dbMock.NewMockRow(ctrl)
+				row.EXPECT().Scan(gomock.Any(), gomock.Any(), gomock.Any(),
+					gomock.Any(), gomock.Any()).Times(1).Return(proxerr.New(database.ErrNoRows, ""))
+
+				conn.EXPECT().QueryRow(gomock.Any(), qFindUserByEmail, email).Times(1).Return(row)
+			},
+			cmd: func(repo *UserRepository) error {
+				_, err := repo.FindByEmail(context.Background(), email)
+				return err
+			},
+			exp: func(err error) {
+				require.Equal(t, ErrUserNotFound, err)
+			},
+		},
+		"FAILED": {
+			reg: func(ctrl *gomock.Controller, conn *_dbMock.MockConn, _ *_uuidMock.MockGenerator) {
+				row := _dbMock.NewMockRow(ctrl)
+				row.EXPECT().Scan(gomock.Any(), gomock.Any(), gomock.Any(),
+					gomock.Any(), gomock.Any()).Times(1).Return(errors.New(""))
+
+				conn.EXPECT().QueryRow(gomock.Any(), qFindUserByEmail, email).Times(1).Return(row)
+			},
+			cmd: func(repo *UserRepository) error {
+				_, err := repo.FindByEmail(context.Background(), email)
+				return err
+			},
+			exp: func(err error) {
+				require.Error(t, err)
+			},
+		},
+	}
+
+	for name, tc := range tcs {
+		t.Run(name, func(t *testing.T) {
+			runUserTestCase(t, &tc)
+		})
+	}
+}
+
 // runUserTestCase should be called by [testing.T.Run]
 func runUserTestCase(t *testing.T, tc *userTestCase) {
 	ctrl := gomock.NewController(t)

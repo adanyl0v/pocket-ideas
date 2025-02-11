@@ -57,3 +57,32 @@ func (d *findUserByIdDto) ToDomain(u *domain.User) {
 	u.CreatedAt, _ = createdAt.(time.Time)
 	u.UpdatedAt, _ = updatedAt.(time.Time)
 }
+
+type findUserByEmailDto struct {
+	ID        zeronull.UUID      `json:"id" db:"id"`
+	Name      zeronull.Text      `json:"name" db:"name"`
+	Email     zeronull.Text      `json:"email" db:"email"`
+	Password  zeronull.Text      `json:"password" db:"password"`
+	CreatedAt zeronull.Timestamp `json:"created_at" db:"created_at"`
+	UpdatedAt zeronull.Timestamp `json:"updated_at" db:"updated_at"`
+}
+
+func newFindUserByEmailDto(email string) findUserByEmailDto {
+	return findUserByEmailDto{
+		Email: zeronull.Text(email),
+	}
+}
+
+func (d *findUserByEmailDto) ToDomain(u *domain.User) {
+	id, _ := d.ID.Value()
+	name, _ := d.Name.Value()
+	password, _ := d.Password.Value()
+	createdAt, _ := d.CreatedAt.Value()
+	updatedAt, _ := d.UpdatedAt.Value()
+
+	u.ID, _ = id.(string)
+	u.Name, _ = name.(string)
+	u.Password, _ = password.(string)
+	u.CreatedAt, _ = createdAt.(time.Time)
+	u.UpdatedAt, _ = updatedAt.(time.Time)
+}
