@@ -12,4 +12,5 @@ type Cache interface {
 	SetJSON(ctx context.Context, key, path string, value any, expiration time.Duration) error
 	Delete(ctx context.Context, keys ...string) error
 	DeleteJSON(ctx context.Context, key, path string) error
+	Exists(ctx context.Context, keys ...string) (int64, error)
 }
