@@ -183,9 +183,50 @@ func (r *UserRepository) FindAll(ctx context.Context) ([]domain.User, error) {
 	return users, nil
 }
 
+const qFindUsersByName = `
+SELECT id, email, password, created_at, updated_at
+FROM users WHERE name = $1
+`
+
 func (r *UserRepository) FindByName(ctx context.Context, name string) ([]domain.User, error) {
-	// TODO implement me
-	panic("implement me")
+	logger := r.logger.With(log.Fields{"name": name})
+
+	var err error
+	defer func() {
+		if err != nil {
+			logger.WithError(err).Error("failed to find users by name")
+		}
+	}()
+
+	users := make([]domain.User, 0)
+	rows, err := r.conn.Query(ctx, qFindUsersByName, name)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		dto := newFindUsersByNameDto(name)
+		if err = rows.Scan(&dto.ID, &dto.Email, &dto.Password, &dto.CreatedAt, &dto.UpdatedAt); err != nil {
+			return nil, err
+		}
+
+		user := domain.User{Name: name}
+		dto.ToDomain(&user)
+		users = append(users, user)
+	}
+
+	if err = rows.Err(); err != nil {
+		var pxErr proxerr.Error
+		if errors.As(err, &pxErr) && errors.Is(pxErr.Unwrap(), database.ErrNoRows) {
+			err = proxerr.New(ErrUserNotFound, pxErr.Error())
+		}
+
+		return nil, err
+	}
+
+	logger.Debug(fmt.Sprintf("found %d users by name", len(users)))
+	return users, nil
 }
 
 func (r *UserRepository) UpdateById(ctx context.Context, user *domain.User) error {

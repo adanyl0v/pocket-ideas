@@ -101,3 +101,25 @@ func (d *findAllUsersDto) ToDomain(u *domain.User) {
 	u.CreatedAt, _ = createdAt.(time.Time)
 	u.UpdatedAt, _ = updatedAt.(time.Time)
 }
+
+type findUsersByNameDto findAllUsersDto
+
+func newFindUsersByNameDto(name string) findUsersByNameDto {
+	return findUsersByNameDto{
+		Name: zeronull.Text(name),
+	}
+}
+
+func (d *findUsersByNameDto) ToDomain(u *domain.User) {
+	id, _ := d.ID.Value()
+	email, _ := d.Email.Value()
+	password, _ := d.Password.Value()
+	createdAt, _ := d.CreatedAt.Value()
+	updatedAt, _ := d.UpdatedAt.Value()
+
+	u.ID, _ = id.(string)
+	u.Email, _ = email.(string)
+	u.Password, _ = password.(string)
+	u.CreatedAt, _ = createdAt.(time.Time)
+	u.UpdatedAt, _ = updatedAt.(time.Time)
+}

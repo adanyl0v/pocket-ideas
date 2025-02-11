@@ -348,6 +348,106 @@ func TestUserRepository_FindAll(t *testing.T) {
 	}
 }
 
+func TestUserRepository_FindByName(t *testing.T) {
+	const name = "user"
+	tcs := map[string]userTestCase{
+		"SUCCESS": {
+			reg: func(ctrl *gomock.Controller, conn *_dbMock.MockConn, _ *_uuidMock.MockGenerator) {
+				rows := _dbMock.NewMockRows(ctrl)
+				rows.EXPECT().Close().Times(1)
+				rows.EXPECT().Err().Return(nil).Times(1)
+
+				var n, i = 5, 0
+				rows.EXPECT().Next().Times(n).DoAndReturn(func() bool {
+					i++
+					return i < n
+				})
+				rows.EXPECT().Scan(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					Times(n - 1).Return(nil)
+
+				conn.EXPECT().Query(gomock.Any(), qFindUsersByName, name).Times(1).Return(rows, nil)
+			},
+			cmd: func(repo *UserRepository) error {
+				_, err := repo.FindByName(context.Background(), name)
+				return err
+			},
+			exp: func(err error) {
+				require.NoError(t, err)
+			},
+		},
+		"FAILED query execution": {
+			reg: func(ctrl *gomock.Controller, conn *_dbMock.MockConn, _ *_uuidMock.MockGenerator) {
+				conn.EXPECT().Query(gomock.Any(), qFindUsersByName, name).Times(1).Return(nil, errors.New(""))
+			},
+			cmd: func(repo *UserRepository) error {
+				_, err := repo.FindByName(context.Background(), name)
+				return err
+			},
+			exp: func(err error) {
+				require.Error(t, err)
+			},
+		},
+		"FAILED model scan": {
+			reg: func(ctrl *gomock.Controller, conn *_dbMock.MockConn, _ *_uuidMock.MockGenerator) {
+				rows := _dbMock.NewMockRows(ctrl)
+				rows.EXPECT().Close().Times(1)
+				rows.EXPECT().Next().Times(1).Return(true)
+				rows.EXPECT().Scan(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					Times(1).Return(errors.New(""))
+
+				conn.EXPECT().Query(gomock.Any(), qFindUsersByName, name).Times(1).Return(rows, nil)
+			},
+			cmd: func(repo *UserRepository) error {
+				_, err := repo.FindByName(context.Background(), name)
+				return err
+			},
+			exp: func(err error) {
+				require.Error(t, err)
+			},
+		},
+		"FAILED user not found": {
+			reg: func(ctrl *gomock.Controller, conn *_dbMock.MockConn, _ *_uuidMock.MockGenerator) {
+				rows := _dbMock.NewMockRows(ctrl)
+				rows.EXPECT().Close().Times(1)
+				rows.EXPECT().Next().Times(1).Return(false)
+				rows.EXPECT().Err().Return(proxerr.New(database.ErrNoRows, "")).Times(1)
+
+				conn.EXPECT().Query(gomock.Any(), qFindUsersByName, name).Times(1).Return(rows, nil)
+			},
+			cmd: func(repo *UserRepository) error {
+				_, err := repo.FindByName(context.Background(), name)
+				return err
+			},
+			exp: func(err error) {
+				require.Equal(t, ErrUserNotFound, err)
+			},
+		},
+		"FAILED": {
+			reg: func(ctrl *gomock.Controller, conn *_dbMock.MockConn, _ *_uuidMock.MockGenerator) {
+				rows := _dbMock.NewMockRows(ctrl)
+				rows.EXPECT().Close().Times(1)
+				rows.EXPECT().Next().Times(1).Return(false)
+				rows.EXPECT().Err().Return(errors.New("")).Times(1)
+
+				conn.EXPECT().Query(gomock.Any(), qFindUsersByName, name).Times(1).Return(rows, nil)
+			},
+			cmd: func(repo *UserRepository) error {
+				_, err := repo.FindByName(context.Background(), name)
+				return err
+			},
+			exp: func(err error) {
+				require.Error(t, err)
+			},
+		},
+	}
+
+	for name, tc := range tcs {
+		t.Run(name, func(t *testing.T) {
+			runUserTestCase(t, &tc)
+		})
+	}
+}
+
 // runUserTestCase should be called by [testing.T.Run]
 func runUserTestCase(t *testing.T, tc *userTestCase) {
 	ctrl := gomock.NewController(t)
