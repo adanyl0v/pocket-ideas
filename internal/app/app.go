@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 	"github.com/adanyl0v/pocket-ideas/internal/config"
-	"github.com/adanyl0v/pocket-ideas/internal/repository/postgres"
+	pgrepo "github.com/adanyl0v/pocket-ideas/internal/repository/postgres"
 	"github.com/adanyl0v/pocket-ideas/pkg/cache/redis"
-	"github.com/adanyl0v/pocket-ideas/pkg/database/postgres/pgx"
+	postgres "github.com/adanyl0v/pocket-ideas/pkg/database/postgres/pgx"
 	"github.com/adanyl0v/pocket-ideas/pkg/log"
 	"github.com/adanyl0v/pocket-ideas/pkg/log/slog"
 	googleuuidgen "github.com/adanyl0v/pocket-ideas/pkg/uuid/google"
@@ -16,6 +16,7 @@ import (
 	stdslog "log/slog"
 	"os"
 	"path/filepath"
+	"time"
 )
 
 func Run() {
@@ -24,12 +25,12 @@ func Run() {
 	logger.With(log.Fields{"env": cfg.Env}).Info("read config")
 
 	postgresDb := mustConnectToPostgres(logger, &cfg.PostgresConfig)
-	defer func() { _ = postgresDb.Close() }()
+	defer postgresDb.Close()
 
 	redisCache := mustConnectToRedis(logger, &cfg.RedisConfig)
 	defer func() { _ = redisCache.Close() }()
 
-	userRepo := postgres.NewUserRepository(postgresDb, logger, googleuuidgen.New())
+	userRepo := pgrepo.NewUserRepository(postgresDb, logger, googleuuidgen.New())
 	_ = userRepo
 }
 
@@ -118,11 +119,11 @@ func mustSetupLogger(env string, cfg *config.LogConfig) log.Logger {
 	return l
 }
 
-func mustConnectToPostgres(logger log.Logger, cfg *config.PostgresConfig) *pgx.DB {
-	ctx, cancel := context.WithTimeout(context.Background(), cfg.ConnTimout)
+func mustConnectToPostgres(logger log.Logger, cfg *config.PostgresConfig) *postgres.Client {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	connConfig := pgx.Config{
+	pgConf := postgres.Config{
 		Host:              cfg.Host,
 		Port:              cfg.Port,
 		User:              cfg.User,
@@ -131,18 +132,18 @@ func mustConnectToPostgres(logger log.Logger, cfg *config.PostgresConfig) *pgx.D
 		SSLMode:           cfg.SSLMode,
 		MaxConns:          cfg.MaxConns,
 		MinConns:          cfg.MinConns,
-		MaxConnLifetime:   cfg.MaxConnLifetime,
 		MaxConnIdleTime:   cfg.MaxConnIdleTime,
+		MaxConnLifetime:   cfg.MaxConnLifetime,
 		HealthCheckPeriod: cfg.HealthCheckPeriod,
 	}
 
-	db, err := pgx.Connect(ctx, &connConfig, logger)
+	client, err := postgres.Connect(ctx, logger, &pgConf)
 	if err != nil {
 		panic(err)
 	}
 
 	logger.Info("connected to postgres")
-	return db
+	return client
 }
 
 func mustConnectToRedis(logger log.Logger, cfg *config.RedisConfig) *redis.Client {

@@ -5,33 +5,32 @@ import (
 	"github.com/adanyl0v/pocket-ideas/internal/domain"
 )
 
-type UserRepository interface {
-	Repository
-	Create(ctx context.Context, user *domain.User) error
-	GetByID(ctx context.Context, id string) (domain.User, error)
-	GetByEmail(ctx context.Context, email string) (domain.User, error)
-	SelectAll(ctx context.Context) ([]domain.User, error)
-	SelectByName(ctx context.Context, name string) ([]domain.User, error)
-	UpdateByID(ctx context.Context, user *domain.User) error
-	DeleteByID(ctx context.Context, id string) error
-}
-
-// This is a simple workaround for adding a transaction support without the need
-// to implement complex patterns, such as [UoW] and without breaking the existing
-// architecture by encapsulating the database logic exclusively within a repository.
+// The simple workaround for adding a transaction support without the need to implement
+// complex patterns, such as [UoW] and without breaking the "clean" architecture rules.
 //
 // [UoW]: https://en.wikipedia.org/wiki/Unit_of_work
 type (
-	Repository interface {
-		// Begin a new implementation-specific transaction
-		Begin(ctx context.Context) (Tx, error)
-
-		// WithTx copies the repository and connects it to the transaction
-		WithTx(tx Tx) Repository
-	}
-
 	Tx interface {
 		Commit(ctx context.Context) error
 		Rollback(ctx context.Context) error
 	}
+
+	Repository interface {
+		// Begin an implementation-specific transaction
+		Begin(ctx context.Context) (Tx, error)
+
+		// WithTx copies the repository and sets up the underlying connection
+		WithTx(tx Tx) Repository
+	}
 )
+
+type UserRepository interface {
+	Repository
+	Save(ctx context.Context, user *domain.User) error
+	FindById(ctx context.Context, id string) (domain.User, error)
+	FindByEmail(ctx context.Context, email string) (domain.User, error)
+	FindAll(ctx context.Context) ([]domain.User, error)
+	FindByName(ctx context.Context, name string) ([]domain.User, error)
+	UpdateById(ctx context.Context, user *domain.User) error
+	DeleteById(ctx context.Context, id string) error
+}

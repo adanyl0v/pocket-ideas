@@ -2,151 +2,156 @@ package postgres
 
 import (
 	"github.com/adanyl0v/pocket-ideas/internal/domain"
-	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/pgtype/zeronull"
 	"time"
 )
 
-type userRepositoryDTO interface {
-	ToDomain(user *domain.User)
-	FromDomain(user *domain.User)
+type saveUserDto struct {
+	ID        string        `json:"id" db:"id"`
+	Name      zeronull.Text `json:"name" db:"name"`
+	Email     zeronull.Text `json:"email" db:"email"`
+	Password  zeronull.Text `json:"password" db:"password"`
+	CreatedAt time.Time     `json:"created_at" db:"created_at"`
+	UpdatedAt time.Time     `json:"updated_at" db:"updated_at"`
 }
 
-type createUserDTO struct {
-	ID        string    `db:"id"`
-	Name      string    `db:"name"`
-	Email     string    `db:"email"`
-	Password  string    `db:"password"`
-	CreatedAt time.Time `db:"created_at"`
-	UpdatedAt time.Time `db:"updated_at"`
-}
-
-func (dto *createUserDTO) ToDomain(user *domain.User) {
-	user.ID = dto.ID
-	user.CreatedAt = dto.CreatedAt
-	user.UpdatedAt = dto.UpdatedAt
-}
-
-func (dto *createUserDTO) FromDomain(user *domain.User) {
-	dto.Name = user.Name
-	dto.Email = user.Email
-	dto.Password = user.Password
-}
-
-type getUserByIdDTO struct {
-	ID        string    `db:"id"`
-	Name      string    `db:"name"`
-	Email     string    `db:"email"`
-	Password  string    `db:"password"`
-	CreatedAt time.Time `db:"created_at"`
-	UpdatedAt time.Time `db:"updated_at"`
-}
-
-func (dto *getUserByIdDTO) ToDomain(user *domain.User) {
-	user.Name = dto.Name
-	user.Email = dto.Email
-	user.Password = dto.Password
-	user.CreatedAt = dto.CreatedAt
-	user.UpdatedAt = dto.UpdatedAt
-}
-
-func (dto *getUserByIdDTO) FromDomain(user *domain.User) {
-	dto.ID = user.ID
-}
-
-type getUserByEmailDTO struct {
-	ID        string    `db:"id"`
-	Name      string    `db:"name"`
-	Email     string    `db:"email"`
-	Password  string    `db:"password"`
-	CreatedAt time.Time `db:"created_at"`
-	UpdatedAt time.Time `db:"updated_at"`
-}
-
-func (dto *getUserByEmailDTO) ToDomain(user *domain.User) {
-	user.ID = dto.ID
-	user.Name = dto.Name
-	user.Password = dto.Password
-	user.CreatedAt = dto.CreatedAt
-	user.UpdatedAt = dto.UpdatedAt
-}
-
-func (dto *getUserByEmailDTO) FromDomain(user *domain.User) {
-	dto.Email = user.Email
-}
-
-type selectAllUsersDTO struct {
-	ID        string    `db:"id"`
-	Name      string    `db:"name"`
-	Email     string    `db:"email"`
-	Password  string    `db:"password"`
-	CreatedAt time.Time `db:"created_at"`
-	UpdatedAt time.Time `db:"updated_at"`
-}
-
-func (dto *selectAllUsersDTO) ToDomain(user *domain.User) {
-	user.ID = dto.ID
-	user.Name = dto.Name
-	user.Email = dto.Email
-	user.Password = dto.Password
-	user.CreatedAt = dto.CreatedAt
-	user.UpdatedAt = dto.UpdatedAt
-}
-
-func (dto *selectAllUsersDTO) FromDomain(_ *domain.User) {}
-
-type selectUsersByNameDTO struct {
-	ID        string    `db:"id"`
-	Name      string    `db:"name"`
-	Email     string    `db:"email"`
-	Password  string    `db:"password"`
-	CreatedAt time.Time `db:"created_at"`
-	UpdatedAt time.Time `db:"updated_at"`
-}
-
-func (dto *selectUsersByNameDTO) ToDomain(user *domain.User) {
-	user.ID = dto.ID
-	user.Email = dto.Email
-	user.Password = dto.Password
-	user.CreatedAt = dto.CreatedAt
-	user.UpdatedAt = dto.UpdatedAt
-}
-
-func (dto *selectUsersByNameDTO) FromDomain(user *domain.User) {
-	dto.Name = user.Name
-}
-
-type updateUserByIdDTO struct {
-	ID        string      `db:"id"`
-	Name      pgtype.Text `db:"name"`
-	Email     pgtype.Text `db:"email"`
-	Password  pgtype.Text `db:"password"`
-	UpdatedAt time.Time   `db:"updated_at"`
-}
-
-func (dto *updateUserByIdDTO) ToDomain(user *domain.User) {
-	user.UpdatedAt = dto.UpdatedAt
-}
-
-func (dto *updateUserByIdDTO) FromDomain(user *domain.User) {
-	dto.ID = user.ID
-
-	if user.Name != "" {
-		dto.Name = pgtype.Text{String: user.Name, Valid: true}
-	}
-	if user.Email != "" {
-		dto.Email = pgtype.Text{String: user.Email, Valid: true}
-	}
-	if user.Password != "" {
-		dto.Password = pgtype.Text{String: user.Password, Valid: true}
+func newSaveUserDto(u *domain.User) saveUserDto {
+	return saveUserDto{
+		Name:     zeronull.Text(u.Name),
+		Email:    zeronull.Text(u.Email),
+		Password: zeronull.Text(u.Password),
 	}
 }
 
-type deleteUserByIdDTO struct {
-	ID string `db:"id"`
+func (d *saveUserDto) ToDomain(u *domain.User) {
+	u.ID = d.ID
+	u.CreatedAt = d.CreatedAt
+	u.UpdatedAt = d.UpdatedAt
 }
 
-func (dto *deleteUserByIdDTO) ToDomain(_ *domain.User) {}
+type findUserByIdDto struct {
+	ID        zeronull.UUID      `json:"id" db:"id"`
+	Name      zeronull.Text      `json:"name" db:"name"`
+	Email     zeronull.Text      `json:"email" db:"email"`
+	Password  zeronull.Text      `json:"password" db:"password"`
+	CreatedAt zeronull.Timestamp `json:"created_at" db:"created_at"`
+	UpdatedAt zeronull.Timestamp `json:"updated_at" db:"updated_at"`
+}
 
-func (dto *deleteUserByIdDTO) FromDomain(user *domain.User) {
-	dto.ID = user.ID
+func newFindUserByIdDto(id string) findUserByIdDto {
+	return findUserByIdDto{
+		ID: zeronull.UUID([]byte(id)),
+	}
+}
+
+func (d *findUserByIdDto) ToDomain(u *domain.User) {
+	name, _ := d.Name.Value()
+	email, _ := d.Email.Value()
+	password, _ := d.Password.Value()
+	createdAt, _ := d.CreatedAt.Value()
+	updatedAt, _ := d.UpdatedAt.Value()
+
+	u.Name, _ = name.(string)
+	u.Email, _ = email.(string)
+	u.Password, _ = password.(string)
+	u.CreatedAt, _ = createdAt.(time.Time)
+	u.UpdatedAt, _ = updatedAt.(time.Time)
+}
+
+type findUserByEmailDto findUserByIdDto
+
+func newFindUserByEmailDto(email string) findUserByEmailDto {
+	return findUserByEmailDto{
+		Email: zeronull.Text(email),
+	}
+}
+
+func (d *findUserByEmailDto) ToDomain(u *domain.User) {
+	id, _ := d.ID.Value()
+	name, _ := d.Name.Value()
+	password, _ := d.Password.Value()
+	createdAt, _ := d.CreatedAt.Value()
+	updatedAt, _ := d.UpdatedAt.Value()
+
+	u.ID, _ = id.(string)
+	u.Name, _ = name.(string)
+	u.Password, _ = password.(string)
+	u.CreatedAt, _ = createdAt.(time.Time)
+	u.UpdatedAt, _ = updatedAt.(time.Time)
+}
+
+type findAllUsersDto findUserByIdDto
+
+func newFindAllUsersDto() findAllUsersDto {
+	return findAllUsersDto{}
+}
+
+func (d *findAllUsersDto) ToDomain(u *domain.User) {
+	id, _ := d.ID.Value()
+	name, _ := d.Name.Value()
+	email, _ := d.Email.Value()
+	password, _ := d.Password.Value()
+	createdAt, _ := d.CreatedAt.Value()
+	updatedAt, _ := d.UpdatedAt.Value()
+
+	u.ID, _ = id.(string)
+	u.Name, _ = name.(string)
+	u.Email, _ = email.(string)
+	u.Password, _ = password.(string)
+	u.CreatedAt, _ = createdAt.(time.Time)
+	u.UpdatedAt, _ = updatedAt.(time.Time)
+}
+
+type findUsersByNameDto findAllUsersDto
+
+func newFindUsersByNameDto(name string) findUsersByNameDto {
+	return findUsersByNameDto{
+		Name: zeronull.Text(name),
+	}
+}
+
+func (d *findUsersByNameDto) ToDomain(u *domain.User) {
+	id, _ := d.ID.Value()
+	email, _ := d.Email.Value()
+	password, _ := d.Password.Value()
+	createdAt, _ := d.CreatedAt.Value()
+	updatedAt, _ := d.UpdatedAt.Value()
+
+	u.ID, _ = id.(string)
+	u.Email, _ = email.(string)
+	u.Password, _ = password.(string)
+	u.CreatedAt, _ = createdAt.(time.Time)
+	u.UpdatedAt, _ = updatedAt.(time.Time)
+}
+
+type updateUserByIdDto struct {
+	ID        zeronull.UUID      `json:"id" db:"id"`
+	Name      zeronull.Text      `json:"name" db:"name"`
+	Email     zeronull.Text      `json:"email" db:"email"`
+	Password  zeronull.Text      `json:"password" db:"password"`
+	CreatedAt zeronull.Timestamp `json:"created_at" db:"created_at"`
+	UpdatedAt time.Time          `json:"updated_at" db:"updated_at"`
+}
+
+func newUpdateUserByIdDto(u *domain.User) updateUserByIdDto {
+	return updateUserByIdDto{
+		ID:       zeronull.UUID([]byte(u.ID)),
+		Name:     zeronull.Text(u.Name),
+		Email:    zeronull.Text(u.Email),
+		Password: zeronull.Text(u.Password),
+	}
+}
+
+func (d *updateUserByIdDto) ToDomain(u *domain.User) {
+	u.UpdatedAt = d.UpdatedAt
+}
+
+type deleteUserByIdDto struct {
+	ID zeronull.UUID `json:"id" db:"id"`
+}
+
+func newDeleteUserByIdDto(id string) deleteUserByIdDto {
+	return deleteUserByIdDto{
+		ID: zeronull.UUID([]byte(id)),
+	}
 }

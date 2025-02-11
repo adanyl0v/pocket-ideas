@@ -2,7 +2,7 @@
 // Source: pkg/uuid/uuid.go
 
 // Package uuid is a generated GoMock package.
-package uuid
+package mock_uuid
 
 import (
 	reflect "reflect"

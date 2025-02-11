@@ -1,66 +1,49 @@
-package postgres
+package database
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 )
 
 var (
-	ErrNoRows              = errors.New("no rows in result set")
+	ErrNoRows              = sql.ErrNoRows
 	ErrCheckViolation      = errors.New("check violation")
 	ErrUniqueViolation     = errors.New("unique violation")
 	ErrNotNullViolation    = errors.New("not null violation")
 	ErrForeignKeyViolation = errors.New("foreign key violation")
 )
 
+type Result interface {
+	String() string
+	Insert() bool
+	Select() bool
+	Update() bool
+	Delete() bool
+	RowsAffected() int64
+}
+
+type Row interface {
+	Scan(dest ...any) error
+}
+
+type Rows interface {
+	Row
+	Err() error
+	Next() bool
+	Values() ([]any, error)
+	Close()
+}
+
 type Conn interface {
-	Executor
-	Querier
-	RowQuerier
-	Beginner
+	Execute(ctx context.Context, query string, args ...any) (Result, error)
+	Query(ctx context.Context, query string, args ...any) (Rows, error)
+	QueryRow(ctx context.Context, query string, args ...any) Row
+	Begin(ctx context.Context) (Tx, error)
 }
 
 type Tx interface {
 	Conn
-	Committer
-	Rollbacker
-}
-
-type Row interface {
-	Scanner
-}
-
-type Rows interface {
-	Scanner
-	Err() error
-	Next() bool
-	Close()
-}
-
-type Scanner interface {
-	Scan(dest ...any) error
-}
-
-type Executor interface {
-	Exec(ctx context.Context, query string, args ...any) error
-}
-
-type Querier interface {
-	Query(ctx context.Context, query string, args ...any) (Rows, error)
-}
-
-type RowQuerier interface {
-	QueryRow(ctx context.Context, query string, args ...any) Row
-}
-
-type Beginner interface {
-	Begin(ctx context.Context) (Tx, error)
-}
-
-type Committer interface {
 	Commit(ctx context.Context) error
-}
-
-type Rollbacker interface {
 	Rollback(ctx context.Context) error
 }

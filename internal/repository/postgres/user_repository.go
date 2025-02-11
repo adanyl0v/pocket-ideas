@@ -3,32 +3,28 @@ package postgres
 import (
 	"context"
 	"errors"
+	"fmt"
 	"github.com/adanyl0v/pocket-ideas/internal/domain"
 	"github.com/adanyl0v/pocket-ideas/internal/repository"
-	pgdb "github.com/adanyl0v/pocket-ideas/pkg/database/postgres"
+	"github.com/adanyl0v/pocket-ideas/pkg/database"
 	"github.com/adanyl0v/pocket-ideas/pkg/log"
 	"github.com/adanyl0v/pocket-ideas/pkg/proxerr"
-	uuidgen "github.com/adanyl0v/pocket-ideas/pkg/uuid"
+	"github.com/adanyl0v/pocket-ideas/pkg/uuid"
 	"time"
 )
 
 var (
-	ErrUserExists                = errors.New("user already exists")
-	ErrUserNotFound              = errors.New("user not found")
-	ErrNoUsersFound              = errors.New("no users found")
-	ErrUserUniqueViolation       = errors.New("violated unique constraint")
-	ErrUserNullViolation         = errors.New("violated not null constraint")
-	ErrNonexistentUserPrimaryKey = errors.New("nonexistent user primary key")
-
-	errGenerateUserId = errors.New("failed to generate user id")
+	ErrUserNotFound            = errors.New("user not found")
+	ErrUserAlreadyExists       = errors.New("user already exists")
+	ErrUserFieldMustNotBeEmpty = errors.New("user field must not be empty")
 )
 
 type UserRepository struct {
 	Repository
-	idGen uuidgen.Generator
+	idGen uuid.Generator
 }
 
-func NewUserRepository(conn pgdb.Conn, logger log.Logger, idGen uuidgen.Generator) *UserRepository {
+func NewUserRepository(conn database.Conn, logger log.Logger, idGen uuid.Generator) *UserRepository {
 	return &UserRepository{
 		Repository: Repository{
 			conn:   conn,
@@ -38,325 +34,272 @@ func NewUserRepository(conn pgdb.Conn, logger log.Logger, idGen uuidgen.Generato
 	}
 }
 
-func (r *UserRepository) Begin(ctx context.Context) (repository.Tx, error) {
-	tx, err := r.conn.Begin(ctx)
-	if err != nil {
-		r.logger.WithError(err).Error("failed to begin transaction")
-		return nil, err
-	}
-
-	return tx, nil
-}
-
 func (r *UserRepository) WithTx(tx repository.Tx) repository.Repository {
-	conn, ok := tx.(pgdb.Tx)
-	if !ok {
-		r.logger.With(log.Fields{
-			"transaction": tx,
-		}).Warn("unsupported transaction type")
+	conn, ok := tx.(database.Tx)
+	if tx == nil || conn == nil || !ok {
+		r.logger.With(log.Fields{"tx": tx}).Error("failed to cast the transaction")
 		return nil
 	}
 
-	return &UserRepository{
-		Repository: Repository{
-			conn:   conn,
-			logger: r.logger,
-		},
-		idGen: r.idGen,
-	}
+	return NewUserRepository(conn, r.logger, r.idGen)
 }
 
-const insertUserQuery = `
+const qInsertUser = `
 INSERT INTO users (id, name, email, password, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $6)
 `
 
-func (r *UserRepository) Create(ctx context.Context, user *domain.User) error {
-	var dto createUserDTO
-	dto.FromDomain(user)
+func (r *UserRepository) Save(ctx context.Context, user *domain.User) error {
+	dto := newSaveUserDto(user)
 
-	id, err := r.idGen.NewV7()
+	var err error
+	dto.ID, err = r.idGen.NewV7()
 	if err != nil {
-		err = proxerr.New(errGenerateUserId, err.Error())
-		r.logger.WithError(err).Error(errGenerateUserId.Error())
+		r.logger.WithError(err).Error("failed to generate user uuid")
 		return err
 	}
 
-	dto.ID = id
 	dto.CreatedAt = time.Now()
 	dto.UpdatedAt = dto.CreatedAt
-	if err = r.conn.Exec(ctx, insertUserQuery, dto.ID, dto.Name, dto.Email,
-		dto.Password, dto.CreatedAt, dto.UpdatedAt); err != nil {
-
+	_, err = r.conn.Execute(ctx, qInsertUser, dto.ID, user.Name, dto.Email, dto.Password, dto.CreatedAt, dto.UpdatedAt)
+	if err != nil {
 		var pxErr proxerr.Error
 		if errors.As(err, &pxErr) {
-			if errors.Is(pxErr.Unwrap(), pgdb.ErrUniqueViolation) {
-				r.logger.With(log.Fields{
-					"email": dto.Email,
-				}).Warn("tried to create a new user with existing email")
-				return proxerr.New(ErrUserExists, pxErr.Error())
+			e := pxErr.Unwrap()
+			switch {
+			case errors.Is(e, database.ErrUniqueViolation):
+				err = proxerr.New(ErrUserAlreadyExists, pxErr.Error())
+			case errors.Is(e, database.ErrNotNullViolation):
+				err = proxerr.New(ErrUserFieldMustNotBeEmpty, pxErr.Error())
 			}
 		}
 
-		r.logger.WithError(err).Error("failed to insert user")
+		r.logger.WithError(err).Error("failed to save a user")
 		return err
 	}
 
-	r.logger.With(log.Fields{
-		"id": id,
-	}).Debug("new user created")
 	dto.ToDomain(user)
+	r.logger.With(log.Fields{"id": dto.ID}).Debug("saved a user")
 	return nil
 }
 
-const getUserByIdQuery = `
+const qFindUserById = `
 SELECT name, email, password, created_at, updated_at
 FROM users WHERE id = $1
 `
 
-func (r *UserRepository) GetByID(ctx context.Context, id string) (domain.User, error) {
-	var user = domain.User{ID: id}
-	var dto getUserByIdDTO
-	dto.FromDomain(&user)
+func (r *UserRepository) FindById(ctx context.Context, id string) (domain.User, error) {
+	logger := r.logger.With(log.Fields{"id": id})
 
-	if err := r.conn.QueryRow(ctx, getUserByIdQuery, dto.ID).Scan(&dto.Name, &dto.Email,
-		&dto.Password, &dto.CreatedAt, &dto.UpdatedAt); err != nil {
+	user := domain.User{ID: id}
+	dto := newFindUserByIdDto(id)
+
+	if err := r.conn.QueryRow(ctx, qFindUserById, id).Scan(&dto.Name,
+		&dto.Email, &dto.Password, &dto.CreatedAt, &dto.UpdatedAt); err != nil {
 
 		var pxErr proxerr.Error
-		if errors.As(err, &pxErr) {
-			if errors.Is(pxErr.Unwrap(), pgdb.ErrNoRows) {
-				r.logger.With(log.Fields{
-					"id": id,
-				}).Warn("tried to get a nonexistent user")
-				return domain.User{}, proxerr.New(ErrUserNotFound, pxErr.Error())
-			}
+		if errors.As(err, &pxErr) && errors.Is(pxErr.Unwrap(), database.ErrNoRows) {
+			err = proxerr.New(ErrUserNotFound, pxErr.Error())
 		}
 
-		r.logger.WithError(err).Error("failed to get the user by id")
+		logger.WithError(err).Error("failed to find a user by id")
 		return domain.User{}, err
 	}
 
-	r.logger.With(log.Fields{
-		"id": id,
-	}).Debug("found user by id")
 	dto.ToDomain(&user)
+	logger.Debug("found a user by id")
 	return user, nil
 }
 
-const getUserByEmailQuery = `
+const qFindUserByEmail = `
 SELECT id, name, password, created_at, updated_at
 FROM users WHERE email = $1
 `
 
-func (r *UserRepository) GetByEmail(ctx context.Context, email string) (domain.User, error) {
-	var user = domain.User{Email: email}
-	var dto getUserByEmailDTO
-	dto.FromDomain(&user)
+func (r *UserRepository) FindByEmail(ctx context.Context, email string) (domain.User, error) {
+	logger := r.logger.With(log.Fields{"email": email})
 
-	if err := r.conn.QueryRow(ctx, getUserByEmailQuery, dto.Email).Scan(&dto.ID, &dto.Name,
-		&dto.Password, &dto.CreatedAt, &dto.UpdatedAt); err != nil {
+	user := domain.User{Email: email}
+	dto := newFindUserByEmailDto(email)
+
+	if err := r.conn.QueryRow(ctx, qFindUserByEmail, email).Scan(&dto.ID,
+		&dto.Name, &dto.Password, &dto.CreatedAt, &dto.UpdatedAt); err != nil {
 
 		var pxErr proxerr.Error
-		if errors.As(err, &pxErr) {
-			if errors.Is(pxErr.Unwrap(), pgdb.ErrNoRows) {
-				r.logger.With(log.Fields{
-					"email": email,
-				}).Warn("tried to get a nonexistent user")
-				return domain.User{}, proxerr.New(ErrUserNotFound, pxErr.Error())
-			}
+		if errors.As(err, &pxErr) && errors.Is(pxErr.Unwrap(), database.ErrNoRows) {
+			err = proxerr.New(ErrUserNotFound, pxErr.Error())
 		}
 
-		r.logger.WithError(err).Error("failed to get the user by email")
+		logger.WithError(err).Error("failed to find a user by email")
 		return domain.User{}, err
 	}
 
-	r.logger.With(log.Fields{
-		"id":    dto.ID,
-		"email": email,
-	}).Debug("found user by email")
 	dto.ToDomain(&user)
+	logger.With(log.Fields{"id": user.ID}).Debug("found a user by email")
 	return user, nil
 }
 
-const selectAllUsersQuery = `
+const qFindAllUsers = `
 SELECT id, name, email, password, created_at, updated_at
 FROM users
 `
 
-func (r *UserRepository) SelectAll(ctx context.Context) ([]domain.User, error) {
-	rows, err := r.conn.Query(ctx, selectAllUsersQuery)
+func (r *UserRepository) FindAll(ctx context.Context) ([]domain.User, error) {
+	var err error
+	defer func() {
+		if err != nil {
+			r.logger.WithError(err).Error("failed to find all users")
+		}
+	}()
+
+	users := make([]domain.User, 0)
+	rows, err := r.conn.Query(ctx, qFindAllUsers)
 	if err != nil {
-		r.logger.WithError(err).Error("failed to select users")
 		return nil, err
 	}
 	defer rows.Close()
 
-	next := rows.Next()
-	if !next {
-		err = rows.Err()
-		if err == nil {
-			err = proxerr.New(ErrNoUsersFound, pgdb.ErrNoRows.Error())
-			r.logger.Warn(ErrNoUsersFound.Error())
-		} else {
-			r.logger.WithError(err).Error("no users selected")
-		}
-
-		return nil, err
-	}
-
-	users := make([]domain.User, 0, 4)
-	for next {
-		var dto selectAllUsersDTO
-		if err = rows.Scan(&dto.ID, &dto.Name, &dto.Email, &dto.Password,
-			&dto.CreatedAt, &dto.UpdatedAt); err != nil {
-
-			r.logger.WithError(err).Error("failed to scan users")
+	for rows.Next() {
+		dto := newFindAllUsersDto()
+		if err = rows.Scan(&dto.ID, &dto.Name, &dto.Email, &dto.Password, &dto.CreatedAt, &dto.UpdatedAt); err != nil {
 			return nil, err
 		}
 
 		var user domain.User
 		dto.ToDomain(&user)
 		users = append(users, user)
-
-		next = rows.Next()
 	}
 
-	r.logger.With(log.Fields{"amount": len(users)}).Debug("got all users")
+	if err = rows.Err(); err != nil {
+		var pxErr proxerr.Error
+		if errors.As(err, &pxErr) && errors.Is(pxErr.Unwrap(), database.ErrNoRows) {
+			err = proxerr.New(ErrUserNotFound, pxErr.Error())
+		}
+
+		return nil, err
+	}
+
+	r.logger.Debug(fmt.Sprintf("found %d users", len(users)))
 	return users, nil
 }
 
-const selectUsersByNameQuery = `
+const qFindUsersByName = `
 SELECT id, email, password, created_at, updated_at
 FROM users WHERE name = $1
 `
 
-func (r *UserRepository) SelectByName(ctx context.Context, name string) ([]domain.User, error) {
-	rows, err := r.conn.Query(ctx, selectUsersByNameQuery, name)
+func (r *UserRepository) FindByName(ctx context.Context, name string) ([]domain.User, error) {
+	logger := r.logger.With(log.Fields{"name": name})
+
+	var err error
+	defer func() {
+		if err != nil {
+			logger.WithError(err).Error("failed to find users by name")
+		}
+	}()
+
+	users := make([]domain.User, 0)
+	rows, err := r.conn.Query(ctx, qFindUsersByName, name)
 	if err != nil {
-		r.logger.WithError(err).Error("failed to select users by name")
 		return nil, err
 	}
 	defer rows.Close()
 
-	next := rows.Next()
-	if !next {
-		err = rows.Err()
-		if err == nil {
-			err = proxerr.New(ErrNoUsersFound, pgdb.ErrNoRows.Error())
-			r.logger.Warn(ErrNoUsersFound.Error())
-		} else {
-			r.logger.WithError(err).Error("no users selected")
+	for rows.Next() {
+		dto := newFindUsersByNameDto(name)
+		if err = rows.Scan(&dto.ID, &dto.Email, &dto.Password, &dto.CreatedAt, &dto.UpdatedAt); err != nil {
+			return nil, err
+		}
+
+		user := domain.User{Name: name}
+		dto.ToDomain(&user)
+		users = append(users, user)
+	}
+
+	if err = rows.Err(); err != nil {
+		var pxErr proxerr.Error
+		if errors.As(err, &pxErr) && errors.Is(pxErr.Unwrap(), database.ErrNoRows) {
+			err = proxerr.New(ErrUserNotFound, pxErr.Error())
 		}
 
 		return nil, err
 	}
 
-	users := make([]domain.User, 0, 4)
-	for next {
-		user := domain.User{Name: name}
-		var dto selectUsersByNameDTO
-		dto.FromDomain(&user)
-
-		if err = rows.Scan(&dto.ID, &dto.Email, &dto.Password,
-			&dto.CreatedAt, &dto.UpdatedAt); err != nil {
-
-			r.logger.WithError(err).Error("failed to scan users")
-			return nil, err
-		}
-
-		dto.ToDomain(&user)
-		users = append(users, user)
-
-		next = rows.Next()
-	}
-
-	r.logger.With(log.Fields{
-		"name":   name,
-		"amount": len(users),
-	}).Debug("got users by name")
+	logger.Debug(fmt.Sprintf("found %d users by name", len(users)))
 	return users, nil
 }
 
-const updateUserByIdQuery = `
+const qUpdateUserById = `
 UPDATE users SET name = $1, email = $2, password = $3, updated_at = $4
 WHERE id = $5
 `
 
-func (r *UserRepository) UpdateByID(ctx context.Context, user *domain.User) error {
-	var dto updateUserByIdDTO
-	dto.FromDomain(user)
+func (r *UserRepository) UpdateById(ctx context.Context, user *domain.User) error {
+	logger := r.logger.With(log.Fields{
+		"id":    user.ID,
+		"name":  user.Name,
+		"email": user.Email,
+	})
 
+	var err error
+	defer func() {
+		if err != nil {
+			logger.WithError(err).Error("failed to update user by id")
+		}
+	}()
+
+	dto := newUpdateUserByIdDto(user)
 	dto.UpdatedAt = time.Now()
-	if err := r.conn.Exec(ctx, updateUserByIdQuery, dto.Name, dto.Email,
-		dto.Password, dto.UpdatedAt, dto.ID); err != nil {
-
+	res, err := r.conn.Execute(ctx, qUpdateUserById, dto.Name, dto.Email, dto.Password, dto.UpdatedAt, dto.ID)
+	if err != nil {
 		var pxErr proxerr.Error
 		if errors.As(err, &pxErr) {
-			switch e := pxErr.Unwrap(); {
-			case errors.Is(e, pgdb.ErrUniqueViolation):
-				r.logger.With(log.Fields{
-					"id":    dto.ID,
-					"email": dto.Email,
-				}).Warn("tried to update user with an existing email")
-				return proxerr.New(ErrUserUniqueViolation, err.Error())
-			case errors.Is(e, pgdb.ErrNotNullViolation):
-				r.logger.With(log.Fields{
-					"id":             dto.ID,
-					"name":           dto.Name.String,
-					"email":          dto.Email.String,
-					"password_valid": dto.Password.Valid,
-				}).Warn("tried to update user with null data")
-				return proxerr.New(ErrUserNullViolation, err.Error())
-			case errors.Is(e, pgdb.ErrForeignKeyViolation):
-				r.logger.With(log.Fields{
-					"id": dto.ID,
-				}).Warn("tried to update a nonexistent user")
-				return proxerr.New(ErrNonexistentUserPrimaryKey, err.Error())
+			switch {
+			case errors.Is(pxErr.Unwrap(), database.ErrNotNullViolation):
+				err = proxerr.New(ErrUserFieldMustNotBeEmpty, pxErr.Error())
+			case errors.Is(pxErr.Unwrap(), database.ErrForeignKeyViolation):
+				err = proxerr.New(ErrUserNotFound, pxErr.Error())
 			}
 		}
 
-		r.logger.With(log.Fields{
-			"id": dto.ID,
-		}).WithError(err).Error("failed to update user by id")
 		return err
 	}
 
-	r.logger.With(log.Fields{
-		"id": dto.ID,
-	}).Debug("updated user by id")
+	if res.RowsAffected() == 0 {
+		err = errors.New("no rows were affected")
+		return err
+	}
+
 	dto.ToDomain(user)
+	logger.Debug("updated user by id")
 	return nil
 }
 
-const deleteUserByIdQuery = `
+const qDeleteUserById = `
 DELETE FROM users WHERE id = $1
 `
 
-func (r *UserRepository) DeleteByID(ctx context.Context, id string) error {
-	user := domain.User{ID: id}
-	var dto deleteUserByIdDTO
-	dto.FromDomain(&user)
+func (r *UserRepository) DeleteById(ctx context.Context, id string) error {
+	logger := r.logger.With(log.Fields{"id": id})
 
-	if err := r.conn.Exec(ctx, deleteUserByIdQuery, dto.ID); err != nil {
-		var pxErr proxerr.Error
-		if errors.As(err, &pxErr) {
-			switch e := pxErr.Unwrap(); {
-			case errors.Is(e, pgdb.ErrForeignKeyViolation):
-				r.logger.With(log.Fields{
-					"id": dto.ID,
-				}).Warn("tried to delete a nonexistent user")
-				return proxerr.New(ErrNonexistentUserPrimaryKey, err.Error())
-			}
+	var err error
+	defer func() {
+		if err != nil {
+			logger.WithError(err).Error("failed to delete user by id")
 		}
+	}()
 
-		r.logger.With(log.Fields{
-			"id": dto.ID,
-		}).WithError(err).Warn("failed to delete user by id")
+	dto := newDeleteUserByIdDto(id)
+	res, err := r.conn.Execute(ctx, qDeleteUserById, dto.ID)
+	if err != nil {
 		return err
 	}
 
-	r.logger.With(log.Fields{
-		"id": dto.ID,
-	}).Debug("deleted user by id")
+	if res.RowsAffected() == 0 {
+		err = errors.New("no rows were affected")
+		return err
+	}
+
+	logger.Debug("deleted user by id")
 	return nil
 }
