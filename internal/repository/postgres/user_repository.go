@@ -229,9 +229,50 @@ func (r *UserRepository) FindByName(ctx context.Context, name string) ([]domain.
 	return users, nil
 }
 
+const qUpdateUserById = `
+UPDATE users SET name = $1, email = $2, password = $3, updated_at = $4
+WHERE id = $5
+`
+
 func (r *UserRepository) UpdateById(ctx context.Context, user *domain.User) error {
-	// TODO implement me
-	panic("implement me")
+	logger := r.logger.With(log.Fields{
+		"id":    user.ID,
+		"name":  user.Name,
+		"email": user.Email,
+	})
+
+	var err error
+	defer func() {
+		if err != nil {
+			logger.WithError(err).Error("failed to update user by id")
+		}
+	}()
+
+	dto := newUpdateUserByIdDto(user)
+	dto.UpdatedAt = time.Now()
+	res, err := r.conn.Execute(ctx, qUpdateUserById, dto.Name, dto.Email, dto.Password, dto.UpdatedAt, dto.ID)
+	if err != nil {
+		var pxErr proxerr.Error
+		if errors.As(err, &pxErr) {
+			switch {
+			case errors.Is(pxErr.Unwrap(), database.ErrNotNullViolation):
+				err = proxerr.New(ErrUserFieldMustNotBeEmpty, pxErr.Error())
+			case errors.Is(pxErr.Unwrap(), database.ErrForeignKeyViolation):
+				err = proxerr.New(ErrUserNotFound, pxErr.Error())
+			}
+		}
+
+		return err
+	}
+
+	if res.RowsAffected() == 0 {
+		err = errors.New("no rows were affected")
+		return err
+	}
+
+	dto.ToDomain(user)
+	logger.Debug("updated user by id")
+	return nil
 }
 
 func (r *UserRepository) DeleteById(ctx context.Context, id string) error {

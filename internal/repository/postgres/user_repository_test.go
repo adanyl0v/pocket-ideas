@@ -448,6 +448,84 @@ func TestUserRepository_FindByName(t *testing.T) {
 	}
 }
 
+func TestUserRepository_UpdateById(t *testing.T) {
+	const id = "0194f5c9-c3ca-7725-bbbc-4bafcd25c632"
+	tcs := map[string]userTestCase{
+		"SUCCESS": {
+			reg: func(ctrl *gomock.Controller, conn *_dbMock.MockConn, _ *_uuidMock.MockGenerator) {
+				result := _dbMock.NewMockResult(ctrl)
+				result.EXPECT().RowsAffected().Times(1).Return(int64(1))
+
+				conn.EXPECT().Execute(gomock.Any(), qUpdateUserById, gomock.Any(), gomock.Any(), gomock.Any(),
+					gomock.Any(), gomock.Any()).Return(result, nil)
+			},
+			cmd: func(repo *UserRepository) error {
+				return repo.UpdateById(context.Background(), &domain.User{ID: id})
+			},
+			exp: func(err error) {
+				require.NoError(t, err)
+			},
+		},
+		"FAILED user field must not be empty": {
+			reg: func(ctrl *gomock.Controller, conn *_dbMock.MockConn, _ *_uuidMock.MockGenerator) {
+				conn.EXPECT().Execute(gomock.Any(), qUpdateUserById, gomock.Any(), gomock.Any(), gomock.Any(),
+					gomock.Any(), gomock.Any()).Return(nil, proxerr.New(database.ErrNotNullViolation, ""))
+			},
+			cmd: func(repo *UserRepository) error {
+				return repo.UpdateById(context.Background(), &domain.User{ID: id})
+			},
+			exp: func(err error) {
+				require.Equal(t, ErrUserFieldMustNotBeEmpty, err)
+			},
+		},
+		"FAILED user not found": {
+			reg: func(ctrl *gomock.Controller, conn *_dbMock.MockConn, _ *_uuidMock.MockGenerator) {
+				conn.EXPECT().Execute(gomock.Any(), qUpdateUserById, gomock.Any(), gomock.Any(), gomock.Any(),
+					gomock.Any(), gomock.Any()).Return(nil, proxerr.New(database.ErrForeignKeyViolation, ""))
+			},
+			cmd: func(repo *UserRepository) error {
+				return repo.UpdateById(context.Background(), &domain.User{ID: id})
+			},
+			exp: func(err error) {
+				require.Equal(t, ErrUserNotFound, err)
+			},
+		},
+		"FAILED no rows were affected": {
+			reg: func(ctrl *gomock.Controller, conn *_dbMock.MockConn, _ *_uuidMock.MockGenerator) {
+				result := _dbMock.NewMockResult(ctrl)
+				result.EXPECT().RowsAffected().Times(1).Return(int64(0))
+
+				conn.EXPECT().Execute(gomock.Any(), qUpdateUserById, gomock.Any(), gomock.Any(), gomock.Any(),
+					gomock.Any(), gomock.Any()).Return(result, nil)
+			},
+			cmd: func(repo *UserRepository) error {
+				return repo.UpdateById(context.Background(), &domain.User{ID: id})
+			},
+			exp: func(err error) {
+				require.Error(t, err)
+			},
+		},
+		"FAILED": {
+			reg: func(ctrl *gomock.Controller, conn *_dbMock.MockConn, _ *_uuidMock.MockGenerator) {
+				conn.EXPECT().Execute(gomock.Any(), qUpdateUserById, gomock.Any(), gomock.Any(), gomock.Any(),
+					gomock.Any(), gomock.Any()).Return(nil, errors.New(""))
+			},
+			cmd: func(repo *UserRepository) error {
+				return repo.UpdateById(context.Background(), &domain.User{ID: id})
+			},
+			exp: func(err error) {
+				require.Error(t, err)
+			},
+		},
+	}
+
+	for name, tc := range tcs {
+		t.Run(name, func(t *testing.T) {
+			runUserTestCase(t, &tc)
+		})
+	}
+}
+
 // runUserTestCase should be called by [testing.T.Run]
 func runUserTestCase(t *testing.T, tc *userTestCase) {
 	ctrl := gomock.NewController(t)

@@ -123,3 +123,25 @@ func (d *findUsersByNameDto) ToDomain(u *domain.User) {
 	u.CreatedAt, _ = createdAt.(time.Time)
 	u.UpdatedAt, _ = updatedAt.(time.Time)
 }
+
+type updateUserByIdDto struct {
+	ID        zeronull.UUID      `json:"id" db:"id"`
+	Name      zeronull.Text      `json:"name" db:"name"`
+	Email     zeronull.Text      `json:"email" db:"email"`
+	Password  zeronull.Text      `json:"password" db:"password"`
+	CreatedAt zeronull.Timestamp `json:"created_at" db:"created_at"`
+	UpdatedAt time.Time          `json:"updated_at" db:"updated_at"`
+}
+
+func newUpdateUserByIdDto(u *domain.User) updateUserByIdDto {
+	return updateUserByIdDto{
+		ID:       zeronull.UUID([]byte(u.ID)),
+		Name:     zeronull.Text(u.Name),
+		Email:    zeronull.Text(u.Email),
+		Password: zeronull.Text(u.Password),
+	}
+}
+
+func (d *updateUserByIdDto) ToDomain(u *domain.User) {
+	u.UpdatedAt = d.UpdatedAt
+}
