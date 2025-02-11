@@ -32,6 +32,64 @@ type DriverTx interface {
 	Rollback(context.Context) error
 }
 
+type Row struct {
+	row pgx.Row
+}
+
+func newRow(row pgx.Row) *Row {
+	return &Row{row: row}
+}
+
+func (r *Row) Scan(dest ...any) error {
+	if err := r.row.Scan(dest...); err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && errors.Is(err, pgx.ErrNoRows) {
+			return proxerr.New(database.ErrNoRows, pgErr.Error())
+		}
+		
+		return err
+	}
+
+	return nil
+}
+
+type Rows struct {
+	rows pgx.Rows
+}
+
+func newRows(rows pgx.Rows) *Rows {
+	return &Rows{rows: rows}
+}
+
+func (r *Rows) Scan(dest ...any) error {
+	if err := r.rows.Scan(dest...); err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && errors.Is(err, pgx.ErrNoRows) {
+			return proxerr.New(database.ErrNoRows, pgErr.Error())
+		}
+
+		return err
+	}
+
+	return nil
+}
+
+func (r *Rows) Err() error {
+	return r.rows.Err()
+}
+
+func (r *Rows) Next() bool {
+	return r.rows.Next()
+}
+
+func (r *Rows) Values() ([]any, error) {
+	return r.rows.Values()
+}
+
+func (r *Rows) Close() {
+	r.rows.Close()
+}
+
 type Conn struct {
 	conn   DriverConn
 	logger log.Logger
@@ -95,7 +153,7 @@ func (c *Conn) Query(ctx context.Context, query string, args ...any) (database.R
 	}
 
 	logger.With(log.Fields{"duration": t}).Debug("executed sql")
-	return rows, err
+	return newRows(rows), err
 }
 
 func (c *Conn) QueryRow(ctx context.Context, query string, args ...any) database.Row {
@@ -106,7 +164,7 @@ func (c *Conn) QueryRow(ctx context.Context, query string, args ...any) database
 	t := time.Since(now)
 
 	logger.With(log.Fields{"duration": t}).Debug("executed sql")
-	return row
+	return newRow(row)
 }
 
 func (c *Conn) Begin(ctx context.Context) (database.Tx, error) {

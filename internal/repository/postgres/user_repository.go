@@ -13,6 +13,7 @@ import (
 )
 
 var (
+	ErrUserNotFound            = errors.New("user not found")
 	ErrUserAlreadyExists       = errors.New("user already exists")
 	ErrUserFieldMustNotBeEmpty = errors.New("user field must not be empty")
 )
@@ -81,9 +82,32 @@ func (r *UserRepository) Save(ctx context.Context, user *domain.User) error {
 	return nil
 }
 
+const qFindUserById = `
+SELECT name, email, password, created_at, updated_at
+FROM users WHERE id = $1
+`
+
 func (r *UserRepository) FindById(ctx context.Context, id string) (domain.User, error) {
-	// TODO implement me
-	panic("implement me")
+	logger := r.logger.With(log.Fields{"id": id})
+
+	user := domain.User{ID: id}
+	dto := newFindUserByIdDto(id)
+
+	if err := r.conn.QueryRow(ctx, qFindUserById, id).Scan(&dto.Name,
+		&dto.Email, &dto.Password, &dto.CreatedAt, &dto.UpdatedAt); err != nil {
+
+		var pxErr proxerr.Error
+		if errors.As(err, &pxErr) && errors.Is(pxErr.Unwrap(), database.ErrNoRows) {
+			err = proxerr.New(ErrUserNotFound, pxErr.Error())
+		}
+
+		logger.WithError(err).Error("failed to find a user by id")
+		return domain.User{}, err
+	}
+
+	logger.Debug("found a user by id")
+	dto.ToDomain(&user)
+	return user, nil
 }
 
 func (r *UserRepository) FindByEmail(ctx context.Context, email string) (domain.User, error) {
