@@ -19,6 +19,14 @@ const DriverName = "pgx"
 
 var ErrNotTransaction = errors.New("the connection is not a transaction")
 
+type DriverRow interface {
+	pgx.Row
+}
+
+type DriverRows interface {
+	pgx.Rows
+}
+
 type DriverConn interface {
 	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
 	Query(context.Context, string, ...any) (pgx.Rows, error)
@@ -33,20 +41,19 @@ type DriverTx interface {
 }
 
 type Row struct {
-	row pgx.Row
+	row DriverRow
 }
 
-func newRow(row pgx.Row) *Row {
+func newRow(row DriverRow) *Row {
 	return &Row{row: row}
 }
 
 func (r *Row) Scan(dest ...any) error {
 	if err := r.row.Scan(dest...); err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && errors.Is(err, pgx.ErrNoRows) {
-			return proxerr.New(database.ErrNoRows, pgErr.Error())
+		if errors.Is(err, pgx.ErrNoRows) {
+			return proxerr.New(database.ErrNoRows, err.Error())
 		}
-		
+
 		return err
 	}
 
@@ -54,18 +61,17 @@ func (r *Row) Scan(dest ...any) error {
 }
 
 type Rows struct {
-	rows pgx.Rows
+	rows DriverRows
 }
 
-func newRows(rows pgx.Rows) *Rows {
+func newRows(rows DriverRows) *Rows {
 	return &Rows{rows: rows}
 }
 
 func (r *Rows) Scan(dest ...any) error {
 	if err := r.rows.Scan(dest...); err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && errors.Is(err, pgx.ErrNoRows) {
-			return proxerr.New(database.ErrNoRows, pgErr.Error())
+		if errors.Is(err, pgx.ErrNoRows) {
+			return proxerr.New(database.ErrNoRows, err.Error())
 		}
 
 		return err
@@ -142,10 +148,9 @@ func (c *Conn) Query(ctx context.Context, query string, args ...any) (database.R
 	t := time.Since(now)
 
 	if err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && errors.Is(pgErr, pgx.ErrNoRows) {
-			err = proxerr.New(database.ErrNoRows, pgErr.Error())
-			logger = logger.With(log.Fields{"driverError": *pgErr})
+		if errors.Is(err, pgx.ErrNoRows) {
+			err = proxerr.New(database.ErrNoRows, err.Error())
+			logger = logger.With(log.Fields{"driverError": err})
 		}
 
 		logger.WithError(err).Error("failed sql query execution")
