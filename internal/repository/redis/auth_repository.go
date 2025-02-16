@@ -11,8 +11,11 @@ import (
 )
 
 const (
-	accessTokensWhiteListKey  = "access_tokens_whitelist"
-	refreshTokensBlackListKey = "refresh_tokens_blacklist"
+	// whitelistKeyFormat will be interpreted as "whitelist:<jwt_token>"
+	whitelistKeyFormat = "whitelist:%s"
+
+	// blacklistKeyFormat will be interpreted as "blacklist:<jwt_token>"
+	blacklistKeyFormat = "blacklist:%s"
 )
 
 type AuthRepository struct {
@@ -81,7 +84,7 @@ func (r *AuthRepository) DeleteSessionById(ctx context.Context, id string) error
 func (r *AuthRepository) SaveAccessTokenToWhiteList(ctx context.Context, accessToken string, expiration time.Duration) error {
 	logger := r.logger.With(log.Fields{"access_token": accessToken})
 
-	if err := r.whiteListConn.Set(ctx, convertAccessTokenToWhiteListKey(accessToken),
+	if err := r.whiteListConn.Set(ctx, formatAccessTokenIntoCacheKey(accessToken),
 		accessToken, expiration); err != nil {
 		logger.WithError(err).Error("failed to save access token to whitelist")
 		return err
@@ -94,7 +97,7 @@ func (r *AuthRepository) SaveAccessTokenToWhiteList(ctx context.Context, accessT
 func (r *AuthRepository) FindAccessTokenInWhiteList(ctx context.Context, accessToken string) (bool, error) {
 	logger := r.logger.With(log.Fields{"access_token": accessToken})
 
-	n, err := r.whiteListConn.Exists(ctx, convertAccessTokenToWhiteListKey(accessToken))
+	n, err := r.whiteListConn.Exists(ctx, formatAccessTokenIntoCacheKey(accessToken))
 	if err != nil {
 		logger.WithError(err).Error("failed to find access token in whitelist")
 		return false, err
@@ -112,7 +115,7 @@ func (r *AuthRepository) FindAccessTokenInWhiteList(ctx context.Context, accessT
 func (r *AuthRepository) DeleteAccessTokenFromWhiteList(ctx context.Context, accessToken string) error {
 	logger := r.logger.With(log.Fields{"access_token": accessToken})
 
-	if err := r.whiteListConn.Delete(ctx, convertAccessTokenToWhiteListKey(accessToken)); err != nil {
+	if _, err := r.whiteListConn.Delete(ctx, formatAccessTokenIntoCacheKey(accessToken)); err != nil {
 		logger.WithError(err).Error("failed to delete access token from whitelist")
 		return err
 	}
@@ -124,7 +127,7 @@ func (r *AuthRepository) DeleteAccessTokenFromWhiteList(ctx context.Context, acc
 func (r *AuthRepository) SaveRefreshTokenToBlackList(ctx context.Context, refreshToken string, expiration time.Duration) error {
 	logger := r.logger.With(log.Fields{"refresh_token": refreshToken})
 
-	if err := r.blackListConn.Set(ctx, convertRefreshTokenToBlackListKey(refreshToken),
+	if err := r.blackListConn.Set(ctx, formatRefreshTokenIntoCacheKey(refreshToken),
 		refreshToken, expiration); err != nil {
 		logger.WithError(err).Error("failed to save refresh token to blacklist")
 		return err
@@ -137,7 +140,7 @@ func (r *AuthRepository) SaveRefreshTokenToBlackList(ctx context.Context, refres
 func (r *AuthRepository) FindRefreshTokenInBlackList(ctx context.Context, refreshToken string) (bool, error) {
 	logger := r.logger.With(log.Fields{"refresh_token": refreshToken})
 
-	n, err := r.blackListConn.Exists(ctx, convertRefreshTokenToBlackListKey(refreshToken))
+	n, err := r.blackListConn.Exists(ctx, formatRefreshTokenIntoCacheKey(refreshToken))
 	if err != nil {
 		logger.WithError(err).Error("failed to find refresh token in blacklist")
 		return false, err
@@ -155,7 +158,7 @@ func (r *AuthRepository) FindRefreshTokenInBlackList(ctx context.Context, refres
 func (r *AuthRepository) DeleteRefreshTokenFromBlackList(ctx context.Context, refreshToken string) error {
 	logger := r.logger.With(log.Fields{"refresh_token": refreshToken})
 
-	if err := r.blackListConn.Delete(ctx, convertRefreshTokenToBlackListKey(refreshToken)); err != nil {
+	if _, err := r.blackListConn.Delete(ctx, formatRefreshTokenIntoCacheKey(refreshToken)); err != nil {
 		logger.WithError(err).Error("failed to delete refresh token from blacklist")
 		return err
 	}
@@ -164,10 +167,10 @@ func (r *AuthRepository) DeleteRefreshTokenFromBlackList(ctx context.Context, re
 	return nil
 }
 
-func convertAccessTokenToWhiteListKey(accessToken string) string {
-	return fmt.Sprint(accessTokensWhiteListKey, ":", accessToken)
+func formatAccessTokenIntoCacheKey(accessToken string) string {
+	return fmt.Sprintf(whitelistKeyFormat, accessToken)
 }
 
-func convertRefreshTokenToBlackListKey(refreshToken string) string {
-	return fmt.Sprint(refreshTokensBlackListKey, ":", refreshToken)
+func formatRefreshTokenIntoCacheKey(refreshToken string) string {
+	return fmt.Sprintf(blacklistKeyFormat, refreshToken)
 }

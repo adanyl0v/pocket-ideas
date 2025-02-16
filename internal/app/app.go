@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"github.com/adanyl0v/pocket-ideas/internal/config"
 	pgrepo "github.com/adanyl0v/pocket-ideas/internal/repository/postgres"
-	"github.com/adanyl0v/pocket-ideas/pkg/cache/redis"
+	"github.com/adanyl0v/pocket-ideas/internal/repository/redis"
+	"github.com/adanyl0v/pocket-ideas/pkg/cache"
+	rediscache "github.com/adanyl0v/pocket-ideas/pkg/cache/redis"
 	postgres "github.com/adanyl0v/pocket-ideas/pkg/database/postgres/pgx"
 	"github.com/adanyl0v/pocket-ideas/pkg/log"
 	"github.com/adanyl0v/pocket-ideas/pkg/log/slog"
@@ -32,6 +34,9 @@ func Run() {
 
 	userRepo := pgrepo.NewUserRepository(postgresDb, logger, googleuuidgen.New())
 	_ = userRepo
+
+	authRepo := redis.NewAuthRepository(redisCache, redisCache, redisCache, logger, googleuuidgen.New())
+	_ = authRepo
 }
 
 func mustSetupLogger(env string, cfg *config.LogConfig) log.Logger {
@@ -146,11 +151,11 @@ func mustConnectToPostgres(logger log.Logger, cfg *config.PostgresConfig) *postg
 	return client
 }
 
-func mustConnectToRedis(logger log.Logger, cfg *config.RedisConfig) *redis.Client {
+func mustConnectToRedis(logger log.Logger, cfg *config.RedisConfig) *rediscache.Client {
 	ctx, cancel := context.WithTimeout(context.Background(), cfg.DialTimeout)
 	defer cancel()
 
-	client, err := redis.Connect(ctx, logger, &redis.Config{
+	client, err := rediscache.Connect(ctx, logger, &rediscache.Config{
 		Host:            cfg.Host,
 		Port:            cfg.Port,
 		User:            cfg.User,
@@ -169,6 +174,11 @@ func mustConnectToRedis(logger log.Logger, cfg *config.RedisConfig) *redis.Clien
 	if err != nil {
 		panic(err)
 	}
+
+	cache.DefaultScanner = rediscache.NewCursorScanner(client.DriverConn().Scan)
+	cache.DefaultSetScanner = rediscache.NewKeyCursorScanner(client.DriverConn().SScan)
+	cache.DefaultHashScanner = rediscache.NewKeyCursorScanner(client.DriverConn().HScan)
+	cache.DefaultSortedSetScanner = rediscache.NewKeyCursorScanner(client.DriverConn().ZScan)
 
 	logger.Info("connected to redis")
 	return client

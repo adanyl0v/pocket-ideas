@@ -3,23 +3,172 @@ package redis
 import (
 	"context"
 	"crypto/tls"
-	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/adanyl0v/pocket-ideas/pkg/cache"
 	"github.com/adanyl0v/pocket-ideas/pkg/log"
 	"github.com/adanyl0v/pocket-ideas/pkg/proxerr"
 	"github.com/redis/go-redis/v9"
 	"time"
 )
 
-var (
-	ErrNonexistentKey = errors.New("the key does not exist")
+type (
+	DriverConn interface {
+		Get(ctx context.Context, key string) *redis.StringCmd
+		Set(ctx context.Context, key string, value any, expiration time.Duration) *redis.StatusCmd
+		Scan(ctx context.Context, cursor uint64, match string, count int64) *redis.ScanCmd
+		SScan(ctx context.Context, key string, cursor uint64, match string, count int64) *redis.ScanCmd
+		HScan(ctx context.Context, key string, cursor uint64, match string, count int64) *redis.ScanCmd
+		ZScan(ctx context.Context, key string, cursor uint64, match string, count int64) *redis.ScanCmd
+		Del(ctx context.Context, keys ...string) *redis.IntCmd
+		Exists(ctx context.Context, keys ...string) *redis.IntCmd
+		TxPipeline() redis.Pipeliner
+	}
+
+	DriverPipeline interface {
+		DriverConn
+		Exec(ctx context.Context) ([]redis.Cmder, error)
+		Discard()
+	}
 )
 
-const (
-	Root = "$"
-	Keep = redis.KeepTTL
-)
+func newConn(conn DriverConn, logger log.Logger) Conn {
+	return Conn{
+		conn:   conn,
+		logger: logger,
+	}
+}
+
+type Conn struct {
+	conn   DriverConn
+	logger log.Logger
+}
+
+func (c *Conn) DriverConn() DriverConn {
+	return c.conn
+}
+
+func (c *Conn) Get(ctx context.Context, key string, dest any) error {
+	logger := c.logger.With(log.Fields{"key": key})
+
+	if err := c.conn.Get(ctx, key).Scan(dest); err != nil {
+		if errors.Is(err, redis.Nil) {
+			err = proxerr.New(cache.ErrKeyDoesNotExist, err.Error())
+		}
+
+		logger.WithError(err).Error("failed to get the key")
+		return err
+	}
+
+	logger.Debug("got the key")
+	return nil
+}
+
+func (c *Conn) Set(ctx context.Context, key string, value any, expiration time.Duration) error {
+	logger := c.logger.With(log.Fields{
+		"key":        key,
+		"expiration": expiration,
+	})
+
+	if err := c.conn.Set(ctx, key, value, expiration).Err(); err != nil {
+		logger.WithError(err).Error("failed to set the key")
+		return err
+	}
+
+	logger.Debug("set the key")
+	return nil
+}
+
+func (c *Conn) Scan(ctx context.Context, scanner cache.Scanner) cache.ScanIterator {
+	return scanner.Scan(ctx)
+}
+
+func (c *Conn) Delete(ctx context.Context, key string) (int64, error) {
+	logger := c.logger.With(log.Fields{"key": key})
+
+	n, err := c.conn.Del(ctx, key).Result()
+	if err != nil {
+		logger.WithError(err).Error("failed to delete the key")
+		return 0, err
+	}
+
+	logger.Debug("deleted the key")
+	return n, nil
+}
+
+func (c *Conn) Exists(ctx context.Context, keys ...string) (int64, error) {
+	logger := c.logger.With(log.Fields{"keys": keys})
+
+	n, err := c.conn.Exists(ctx, keys...).Result()
+	if err != nil {
+		logger.WithError(err).Error("failed to check keys existence")
+		return 0, err
+	}
+
+	logger.Debug(fmt.Sprintf("%d out of %d keys exist", n, len(keys)))
+	return n, nil
+}
+
+func (c *Conn) Begin(_ context.Context) cache.Tx {
+	return newTx(c.conn.TxPipeline(), c.logger)
+}
+
+type Tx struct {
+	Conn
+}
+
+func newTx(pipeline DriverPipeline, logger log.Logger) *Tx {
+	return &Tx{
+		Conn: Conn{
+			conn:   pipeline,
+			logger: logger,
+		},
+	}
+}
+
+func (t *Tx) Exec(ctx context.Context) error {
+	tx, ok := t.conn.(DriverPipeline)
+	if !ok {
+		t.logger.Error("failed to cast the driver connection to a pipeline")
+		return nil
+	}
+
+	if _, err := tx.Exec(ctx); err != nil {
+		t.logger.WithError(err).Error("failed to execute commands")
+		return err
+	}
+
+	t.logger.Debug("executed commands")
+	return nil
+}
+
+func (t *Tx) Discard(_ context.Context) error {
+	tx, ok := t.conn.(DriverPipeline)
+	if !ok {
+		t.logger.Error("failed to cast the driver connection to a pipeline")
+		return nil
+	}
+
+	tx.Discard()
+
+	t.logger.Debug("discarded commands")
+	return nil
+}
+
+type Client struct {
+	Conn
+	redisClient *redis.Client
+}
+
+func (c *Client) Close() error {
+	if err := c.redisClient.Close(); err != nil {
+		c.logger.WithError(err).Error("failed to close the redis connection")
+		return err
+	}
+
+	c.logger.Debug("closed the redis connection")
+	return nil
+}
 
 type Config struct {
 	Host            string
@@ -36,154 +185,6 @@ type Config struct {
 	ConnMaxIdleTime time.Duration
 	ConnMaxLifetime time.Duration
 	TLSConfig       *tls.Config
-}
-
-type Client struct {
-	client *redis.Client
-	logger log.Logger
-}
-
-func New(client *redis.Client, logger log.Logger) *Client {
-	return &Client{
-		client: client,
-		logger: logger,
-	}
-}
-
-func (c *Client) Close() error {
-	if err := c.client.Close(); err != nil {
-		c.logger.WithError(err).Error("failed to close the redis connection")
-		return err
-	}
-
-	c.logger.Info("closed the redis connection")
-	return nil
-}
-
-func (c *Client) Get(ctx context.Context, key string, dest any) error {
-	logger := c.logger.With(log.Fields{"key": key})
-
-	cmd := c.client.Get(ctx, key)
-	if err := cmd.Err(); err != nil {
-		if errors.Is(err, redis.Nil) {
-			logger.WithError(err).Error("key does not exist")
-			return proxerr.New(ErrNonexistentKey, err.Error())
-		}
-
-		logger.WithError(err).Error("failed to get the key")
-		return err
-	}
-
-	logger.Debug("got the key")
-	return cmd.Scan(dest)
-}
-
-func (c *Client) GetJSON(ctx context.Context, key, path string, dest any) error {
-	logger := c.logger.With(log.Fields{
-		"key":  key,
-		"path": path,
-	})
-
-	cmd := c.client.JSONGet(ctx, key, path)
-	if err := cmd.Err(); err != nil {
-		if errors.Is(err, redis.Nil) {
-			logger.WithError(err).Error("key does not exist")
-			return proxerr.New(ErrNonexistentKey, err.Error())
-		}
-
-		logger.WithError(err).Error("failed to get the key")
-		return err
-	}
-
-	logger.Debug("got the key")
-	return json.Unmarshal([]byte(cmd.String()), dest)
-}
-
-func (c *Client) Set(ctx context.Context, key string, value any, expiration time.Duration) error {
-	logger := c.logger.With(log.Fields{
-		"key": key,
-		"exp": expiration,
-	})
-
-	cmd := c.client.Set(ctx, key, value, expiration)
-	if err := cmd.Err(); err != nil {
-		logger.WithError(err).Error("failed to set the key")
-		return err
-	}
-
-	logger.Debug("set the key")
-	return nil
-}
-
-func (c *Client) SetJSON(ctx context.Context, key, path string, value any, expiration time.Duration) error {
-	logger := c.logger.With(log.Fields{
-		"key":  key,
-		"path": path,
-		"exp":  expiration,
-	})
-
-	if _, err := c.client.TxPipelined(ctx, func(p redis.Pipeliner) error {
-		if err := p.JSONSet(ctx, key, path, value).Err(); err != nil {
-			logger.WithError(err).Error("failed to set the key")
-			p.Discard()
-			return err
-		}
-
-		if err := p.Expire(ctx, key, expiration).Err(); err != nil {
-			logger.WithError(err).Error("failed to expire the key")
-			p.Discard()
-			return err
-		}
-
-		return nil
-	}); err != nil {
-		return err
-	}
-
-	logger.Debug("set the key")
-	return nil
-}
-
-func (c *Client) Delete(ctx context.Context, keys ...string) error {
-	logger := c.logger.With(log.Fields{"keys": keys})
-
-	cmd := c.client.Del(ctx, keys...)
-	if err := cmd.Err(); err != nil {
-		logger.WithError(err).Error("failed to delete the keys")
-		return err
-	}
-
-	logger.Debug("deleted the keys")
-	return nil
-}
-
-func (c *Client) DeleteJSON(ctx context.Context, key, path string) error {
-	logger := c.logger.With(log.Fields{
-		"key":  key,
-		"path": path,
-	})
-
-	cmd := c.client.JSONDel(ctx, key, path)
-	if err := cmd.Err(); err != nil {
-		logger.WithError(err).Error("failed to delete the key")
-		return err
-	}
-
-	logger.Debug("deleted the key")
-	return nil
-}
-
-func (c *Client) Exists(ctx context.Context, keys ...string) (int64, error) {
-	logger := c.logger.With(log.Fields{"keys": keys})
-
-	n, err := c.client.Exists(ctx, keys...).Result()
-	if err != nil {
-		logger.WithError(err).Error("failed to get the keys")
-		return 0, err
-	}
-
-	logger.Debug(fmt.Sprintf("%d/%d exists", n, len(keys)))
-	return n, nil
 }
 
 func Connect(ctx context.Context, logger log.Logger, config *Config) (*Client, error) {
@@ -235,5 +236,11 @@ func Connect(ctx context.Context, logger log.Logger, config *Config) (*Client, e
 		"idle_conns":  stats.IdleConns,
 		"stale_conns": stats.StaleConns,
 	}).Debug("pinged the redis connection")
-	return New(client, logger), nil
+	return &Client{
+		Conn: Conn{
+			conn:   client,
+			logger: logger,
+		},
+		redisClient: client,
+	}, nil
 }
