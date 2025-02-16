@@ -1,7 +1,8 @@
-package postgres
+package redis
 
 import (
 	"context"
+	"fmt"
 	"github.com/adanyl0v/pocket-ideas/internal/domain"
 	"github.com/adanyl0v/pocket-ideas/pkg/cache"
 	"github.com/adanyl0v/pocket-ideas/pkg/log"
@@ -10,8 +11,7 @@ import (
 )
 
 const (
-	accessTokensWhiteListKey  = "access_tokens_whitelist"
-	refreshTokensBlackListKey = "refresh_tokens_blacklist"
+	accessTokensWhiteListKey = "access_tokens_whitelist"
 )
 
 type AuthRepository struct {
@@ -78,21 +78,49 @@ func (r *AuthRepository) DeleteSessionById(ctx context.Context, id string) error
 }
 
 func (r *AuthRepository) SaveAccessTokenToWhiteList(ctx context.Context, accessToken string, expiration time.Duration) error {
-	// TODO implement me
-	panic("implement me")
+	logger := r.logger.With(log.Fields{"access_token": accessToken})
+
+	if err := r.whiteListConn.Set(ctx, convertAccessTokenToWhiteListKey(accessToken),
+		accessToken, expiration); err != nil {
+		logger.WithError(err).Error("failed to save access token to white list")
+		return err
+	}
+
+	logger.Debug("saved access token to whitelist")
+	return nil
 }
 
 func (r *AuthRepository) FindAccessTokenInWhiteList(ctx context.Context, accessToken string) (bool, error) {
-	// TODO implement me
-	panic("implement me")
+	logger := r.logger.With(log.Fields{"access_token": accessToken})
+
+	n, err := r.whiteListConn.Exists(ctx, convertAccessTokenToWhiteListKey(accessToken))
+	if err != nil {
+		logger.WithError(err).Error("failed to find access token in whitelist")
+		return false, err
+	}
+
+	if n < 1 {
+		logger.Debug("access token not found in whitelist")
+		return false, nil
+	}
+
+	logger.Debug("found access token in whitelist")
+	return true, nil
 }
 
-func (r *AuthRepository) DeleteAccessTokenFromWhiteList(ctx context.Context, accessToken string, expiration time.Duration) error {
-	// TODO implement me
-	panic("implement me")
+func (r *AuthRepository) DeleteAccessTokenFromWhiteList(ctx context.Context, accessToken string) error {
+	logger := r.logger.With(log.Fields{"access_token": accessToken})
+
+	if err := r.whiteListConn.Delete(ctx, convertAccessTokenToWhiteListKey(accessToken)); err != nil {
+		logger.WithError(err).Error("failed to delete access token from white list")
+		return err
+	}
+
+	logger.Debug("deleted access token from white list")
+	return nil
 }
 
-func (r *AuthRepository) SaveRefreshTokenToBlackList(ctx context.Context, refreshToken string, expiration time.Time) error {
+func (r *AuthRepository) SaveRefreshTokenToBlackList(ctx context.Context, refreshToken string, expiration time.Duration) error {
 	// TODO implement me
 	panic("implement me")
 }
@@ -102,7 +130,11 @@ func (r *AuthRepository) FindRefreshTokenInBlackList(ctx context.Context, refres
 	panic("implement me")
 }
 
-func (r *AuthRepository) DeleteRefreshTokenFromBlackList(ctx context.Context, refreshToken string, expiration time.Time) error {
+func (r *AuthRepository) DeleteRefreshTokenFromBlackList(ctx context.Context, refreshToken string) error {
 	// TODO implement me
 	panic("implement me")
+}
+
+func convertAccessTokenToWhiteListKey(accessToken string) string {
+	return fmt.Sprint(accessTokensWhiteListKey, ":", accessToken)
 }

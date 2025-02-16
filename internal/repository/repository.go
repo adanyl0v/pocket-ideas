@@ -48,9 +48,9 @@ type AuthRepository interface {
 
 	SaveAccessTokenToWhiteList(ctx context.Context, accessToken string, expiration time.Duration) error
 	FindAccessTokenInWhiteList(ctx context.Context, accessToken string) (bool, error)
-	DeleteAccessTokenFromWhiteList(ctx context.Context, accessToken string, expiration time.Duration) error
+	DeleteAccessTokenFromWhiteList(ctx context.Context, accessToken string) error
 
-	SaveRefreshTokenToBlackList(ctx context.Context, refreshToken string, expiration time.Time) error
+	SaveRefreshTokenToBlackList(ctx context.Context, refreshToken string, expiration time.Duration) error
 	FindRefreshTokenInBlackList(ctx context.Context, refreshToken string) (bool, error)
-	DeleteRefreshTokenFromBlackList(ctx context.Context, refreshToken string, expiration time.Time) error
+	DeleteRefreshTokenFromBlackList(ctx context.Context, refreshToken string) error
 }
