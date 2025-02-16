@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-type Cache interface {
+type Conn interface {
 	Get(ctx context.Context, key string, dest any) error
 	GetJSON(ctx context.Context, key, path string, dest any) error
 	Set(ctx context.Context, key string, value any, expiration time.Duration) error
