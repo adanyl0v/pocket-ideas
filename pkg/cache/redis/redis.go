@@ -5,11 +5,12 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"time"
+
 	"github.com/adanyl0v/pocket-ideas/pkg/cache"
 	"github.com/adanyl0v/pocket-ideas/pkg/log"
 	"github.com/adanyl0v/pocket-ideas/pkg/proxerr"
 	"github.com/redis/go-redis/v9"
-	"time"
 )
 
 type (
@@ -166,7 +167,7 @@ func (c *Client) Close() error {
 		return err
 	}
 
-	c.logger.Debug("closed the redis connection")
+	c.logger.Info("closed the redis connection")
 	return nil
 }
 

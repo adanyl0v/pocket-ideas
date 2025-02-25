@@ -42,15 +42,15 @@ type AuthRepository interface {
 	FindSessionByRefreshToken(ctx context.Context, refreshToken string) (domain.Session, error)
 	FindSessionByFingerprint(ctx context.Context, fp domain.Fingerprint) (domain.Session, error)
 	FindAllSessions(ctx context.Context) ([]domain.Session, error)
-	FindSessionByUserId(ctx context.Context, userId string) ([]domain.Session, error)
+	FindSessionsByUserId(ctx context.Context, userId string) ([]domain.Session, error)
 	UpdateSessionById(ctx context.Context, session *domain.Session) error
 	DeleteSessionById(ctx context.Context, id string) error
 
-	SaveAccessTokenToWhiteList(ctx context.Context, accessToken string, expiration time.Duration) error
-	FindAccessTokenInWhiteList(ctx context.Context, accessToken string) (bool, error)
-	DeleteAccessTokenFromWhiteList(ctx context.Context, accessToken string) error
+	SaveAccessTokenToWhitelist(ctx context.Context, accessToken string, expiration time.Duration) error
+	FindAccessTokenInWhitelist(ctx context.Context, accessToken string) (bool, error)
+	DeleteAccessTokenFromWhitelist(ctx context.Context, accessToken string) error
 
-	SaveRefreshTokenToBlackList(ctx context.Context, refreshToken string, expiration time.Duration) error
-	FindRefreshTokenInBlackList(ctx context.Context, refreshToken string) (bool, error)
-	DeleteRefreshTokenFromBlackList(ctx context.Context, refreshToken string) error
+	SaveRefreshTokenToBlacklist(ctx context.Context, refreshToken string, expiration time.Duration) error
+	FindRefreshTokenInBlacklist(ctx context.Context, refreshToken string) (bool, error)
+	DeleteRefreshTokenFromBlacklist(ctx context.Context, refreshToken string) error
 }

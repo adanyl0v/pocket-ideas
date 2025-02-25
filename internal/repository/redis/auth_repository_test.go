@@ -3,6 +3,8 @@ package redis
 import (
 	"context"
 	"errors"
+	"github.com/adanyl0v/pocket-ideas/internal/domain"
+	_redisrepoMock "github.com/adanyl0v/pocket-ideas/internal/repository/redis/mocks"
 	_cacheMock "github.com/adanyl0v/pocket-ideas/mocks/pkg/cache"
 	_uuidMock "github.com/adanyl0v/pocket-ideas/mocks/pkg/uuid"
 	"github.com/adanyl0v/pocket-ideas/pkg/log/slog"
@@ -26,6 +28,161 @@ type (
 	authRepositoryTestCaseExpect   func(err error)
 )
 
+type (
+	authRepoSessionsTestCase struct {
+		reg authRepoSessionsTcRegister
+		cmd authRepoSessionsTcCommand
+		exp authRepoSessionsTcExpect
+	}
+
+	authRepoSessionsTcRegister func(
+		_ *gomock.Controller,
+		conn *_cacheMock.MockConn,
+		_ *_uuidMock.MockGenerator,
+		jsoner *_redisrepoMock.MockJSONer,
+	)
+	authRepoSessionsTcCommand func(repo *AuthRepository) error
+	authRepoSessionsTcExpect  func(err error)
+)
+
+func TestAuthRepository_SaveSession(t *testing.T) {
+	tcs := map[string]authRepoSessionsTestCase{
+		"SUCCESS": {
+			reg: func(_ *gomock.Controller, conn *_cacheMock.MockConn, idGen *_uuidMock.MockGenerator, jsoner *_redisrepoMock.MockJSONer) {
+				idGen.EXPECT().NewV7().Return("", nil)
+				jsoner.EXPECT().Marshal(gomock.Any()).Return(nil, nil)
+				conn.EXPECT().Set(gomock.Any(), formatToSessionKey(""), gomock.Any(), gomock.Any()).
+					Return(nil)
+			},
+			cmd: func(repo *AuthRepository) error {
+				return repo.SaveSession(context.Background(), new(domain.Session))
+			},
+			exp: func(err error) {
+				require.NoError(t, err)
+			},
+		},
+		"FAILED to generate session uuid": {
+			reg: func(_ *gomock.Controller, _ *_cacheMock.MockConn, idGen *_uuidMock.MockGenerator, _ *_redisrepoMock.MockJSONer) {
+				idGen.EXPECT().NewV7().Return("", errors.New(""))
+			},
+			cmd: func(repo *AuthRepository) error {
+				return repo.SaveSession(context.Background(), new(domain.Session))
+			},
+			exp: func(err error) {
+				require.Error(t, err)
+			},
+		},
+		"FAILED to marshal a session": {
+			reg: func(_ *gomock.Controller, _ *_cacheMock.MockConn, idGen *_uuidMock.MockGenerator, jsoner *_redisrepoMock.MockJSONer) {
+				idGen.EXPECT().NewV7().Return("", nil)
+				jsoner.EXPECT().Marshal(gomock.Any()).Return(nil, errors.New(""))
+			},
+			cmd: func(repo *AuthRepository) error {
+				return repo.SaveSession(context.Background(), new(domain.Session))
+			},
+			exp: func(err error) {
+				require.Error(t, err)
+			},
+		},
+		"FAILED to save a session": {
+			reg: func(_ *gomock.Controller, conn *_cacheMock.MockConn, idGen *_uuidMock.MockGenerator, jsoner *_redisrepoMock.MockJSONer) {
+				idGen.EXPECT().NewV7().Return("", nil)
+				jsoner.EXPECT().Marshal(gomock.Any()).Return(nil, nil)
+				conn.EXPECT().Set(gomock.Any(), formatToSessionKey(""), gomock.Any(), gomock.Any()).
+					Return(errors.New(""))
+			},
+			cmd: func(repo *AuthRepository) error {
+				return repo.SaveSession(context.Background(), new(domain.Session))
+			},
+			exp: func(err error) {
+				require.Error(t, err)
+			},
+		},
+	}
+
+	for name, tc := range tcs {
+		t.Run(name, func(t *testing.T) {
+			runSessionsTestCase(t, &tc)
+		})
+	}
+}
+
+func TestAuthRepository_FindSessionById(t *testing.T) {
+	tcs := map[string]authRepoSessionsTestCase{
+		"SUCCESS": {
+			reg: func(_ *gomock.Controller, conn *_cacheMock.MockConn, _ *_uuidMock.MockGenerator, jsoner *_redisrepoMock.MockJSONer) {
+				jsoner.EXPECT().Unmarshal(gomock.Any(), gomock.Any()).Return(nil)
+				conn.EXPECT().Get(gomock.Any(), formatToSessionKey(""), gomock.Any()).
+					Return(nil)
+			},
+			cmd: func(repo *AuthRepository) error {
+				_, err := repo.FindSessionById(context.Background(), "")
+				return err
+			},
+			exp: func(err error) {
+				require.NoError(t, err)
+			},
+		},
+		"FAILED to find a session by id": {
+			reg: func(_ *gomock.Controller, conn *_cacheMock.MockConn, _ *_uuidMock.MockGenerator, _ *_redisrepoMock.MockJSONer) {
+				conn.EXPECT().Get(gomock.Any(), formatToSessionKey(""), gomock.Any()).
+					Return(errors.New(""))
+			},
+			cmd: func(repo *AuthRepository) error {
+				_, err := repo.FindSessionById(context.Background(), "")
+				return err
+			},
+			exp: func(err error) {
+				require.Error(t, err)
+			},
+		},
+		"FAILED to unmarshal a session": {
+			reg: func(_ *gomock.Controller, conn *_cacheMock.MockConn, _ *_uuidMock.MockGenerator, jsoner *_redisrepoMock.MockJSONer) {
+				conn.EXPECT().Get(gomock.Any(), formatToSessionKey(""), gomock.Any()).Return(nil)
+				jsoner.EXPECT().Unmarshal(gomock.Any(), gomock.Any()).Return(errors.New(""))
+			},
+			cmd: func(repo *AuthRepository) error {
+				_, err := repo.FindSessionById(context.Background(), "")
+				return err
+			},
+			exp: func(err error) {
+				require.Error(t, err)
+			},
+		},
+	}
+
+	for name, tc := range tcs {
+		t.Run(name, func(t *testing.T) {
+			runSessionsTestCase(t, &tc)
+		})
+	}
+}
+
+func runSessionsTestCase(t *testing.T, tc *authRepoSessionsTestCase) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	sessionsConn := _cacheMock.NewMockConn(ctrl)
+	idGen := _uuidMock.NewMockGenerator(ctrl)
+	jsoner := _redisrepoMock.NewMockJSONer(ctrl)
+	if tc.reg != nil {
+		tc.reg(ctrl, sessionsConn, idGen, jsoner)
+	}
+
+	logger := slog.NewLogger(stdslog.New(slogzap.Option{}.NewZapHandler()))
+	repo := NewAuthRepository(sessionsConn, nil, nil, logger, idGen)
+	repo.SetJSONer(jsoner)
+
+	var err error
+	if tc.cmd != nil {
+		err = tc.cmd(repo)
+	}
+
+	if tc.exp != nil {
+		tc.exp(err)
+	}
+}
+
 func TestAuthRepository_SaveAccessTokenToWhiteList(t *testing.T) {
 	const token = "testAccessToken"
 	const expiration = time.Duration(-1)
@@ -33,11 +190,10 @@ func TestAuthRepository_SaveAccessTokenToWhiteList(t *testing.T) {
 	tcs := map[string]authRepositoryTestCase{
 		"SUCCESS": {
 			reg: func(_ *gomock.Controller, conn *_cacheMock.MockConn, _ *_uuidMock.MockGenerator) {
-				conn.EXPECT().Set(gomock.Any(), formatAccessTokenIntoCacheKey(token), token, expiration).
-					Times(1).Return(nil)
+				conn.EXPECT().Set(gomock.Any(), formatAccessTokenIntoCacheKey(token), token, expiration).Return(nil)
 			},
 			cmd: func(repo *AuthRepository) error {
-				return repo.SaveAccessTokenToWhiteList(context.Background(), token, expiration)
+				return repo.SaveAccessTokenToWhitelist(context.Background(), token, expiration)
 			},
 			exp: func(err error) {
 				require.NoError(t, err)
@@ -45,11 +201,10 @@ func TestAuthRepository_SaveAccessTokenToWhiteList(t *testing.T) {
 		},
 		"FAILURE": {
 			reg: func(_ *gomock.Controller, conn *_cacheMock.MockConn, _ *_uuidMock.MockGenerator) {
-				conn.EXPECT().Set(gomock.Any(), formatAccessTokenIntoCacheKey(token), token, expiration).
-					Times(1).Return(errors.New(""))
+				conn.EXPECT().Set(gomock.Any(), formatAccessTokenIntoCacheKey(token), token, expiration).Return(errors.New(""))
 			},
 			cmd: func(repo *AuthRepository) error {
-				return repo.SaveAccessTokenToWhiteList(context.Background(), token, expiration)
+				return repo.SaveAccessTokenToWhitelist(context.Background(), token, expiration)
 			},
 			exp: func(err error) {
 				require.Error(t, err)
@@ -71,10 +226,10 @@ func TestAuthRepository_FindAccessTokenInWhiteList(t *testing.T) {
 		"SUCCESS": {
 			reg: func(_ *gomock.Controller, conn *_cacheMock.MockConn, _ *_uuidMock.MockGenerator) {
 				conn.EXPECT().Exists(gomock.Any(), formatAccessTokenIntoCacheKey(token)).
-					Times(1).Return(int64(1), nil)
+					Return(int64(1), nil)
 			},
 			cmd: func(repo *AuthRepository) error {
-				found, err := repo.FindAccessTokenInWhiteList(context.Background(), token)
+				found, err := repo.FindAccessTokenInWhitelist(context.Background(), token)
 				require.True(t, found)
 				return err
 			},
@@ -85,10 +240,10 @@ func TestAuthRepository_FindAccessTokenInWhiteList(t *testing.T) {
 		"FAILURE": {
 			reg: func(_ *gomock.Controller, conn *_cacheMock.MockConn, _ *_uuidMock.MockGenerator) {
 				conn.EXPECT().Exists(gomock.Any(), formatAccessTokenIntoCacheKey(token)).
-					Times(1).Return(int64(0), errors.New(""))
+					Return(int64(0), errors.New(""))
 			},
 			cmd: func(repo *AuthRepository) error {
-				found, err := repo.FindAccessTokenInWhiteList(context.Background(), token)
+				found, err := repo.FindAccessTokenInWhitelist(context.Background(), token)
 				require.False(t, found)
 				return err
 			},
@@ -99,10 +254,10 @@ func TestAuthRepository_FindAccessTokenInWhiteList(t *testing.T) {
 		"FAILURE not found": {
 			reg: func(_ *gomock.Controller, conn *_cacheMock.MockConn, _ *_uuidMock.MockGenerator) {
 				conn.EXPECT().Exists(gomock.Any(), formatAccessTokenIntoCacheKey(token)).
-					Times(1).Return(int64(0), nil)
+					Return(int64(0), nil)
 			},
 			cmd: func(repo *AuthRepository) error {
-				found, err := repo.FindAccessTokenInWhiteList(context.Background(), token)
+				found, err := repo.FindAccessTokenInWhitelist(context.Background(), token)
 				require.False(t, found)
 				return err
 			},
@@ -126,10 +281,10 @@ func TestAuthRepository_DeleteAccessTokenFromWhiteList(t *testing.T) {
 		"SUCCESS": {
 			reg: func(_ *gomock.Controller, conn *_cacheMock.MockConn, _ *_uuidMock.MockGenerator) {
 				conn.EXPECT().Delete(gomock.Any(), formatAccessTokenIntoCacheKey(token)).
-					Times(1).Return(int64(1), nil)
+					Return(int64(1), nil)
 			},
 			cmd: func(repo *AuthRepository) error {
-				return repo.DeleteAccessTokenFromWhiteList(context.Background(), token)
+				return repo.DeleteAccessTokenFromWhitelist(context.Background(), token)
 			},
 			exp: func(err error) {
 				require.NoError(t, err)
@@ -138,10 +293,10 @@ func TestAuthRepository_DeleteAccessTokenFromWhiteList(t *testing.T) {
 		"FAILURE": {
 			reg: func(_ *gomock.Controller, conn *_cacheMock.MockConn, _ *_uuidMock.MockGenerator) {
 				conn.EXPECT().Delete(gomock.Any(), formatAccessTokenIntoCacheKey(token)).
-					Times(1).Return(int64(0), errors.New(""))
+					Return(int64(0), errors.New(""))
 			},
 			cmd: func(repo *AuthRepository) error {
-				return repo.DeleteAccessTokenFromWhiteList(context.Background(), token)
+				return repo.DeleteAccessTokenFromWhitelist(context.Background(), token)
 			},
 			exp: func(err error) {
 				require.Error(t, err)
@@ -187,10 +342,10 @@ func TestAuthRepository_SaveRefreshTokenToBlackList(t *testing.T) {
 		"SUCCESS": {
 			reg: func(_ *gomock.Controller, conn *_cacheMock.MockConn, _ *_uuidMock.MockGenerator) {
 				conn.EXPECT().Set(gomock.Any(), formatRefreshTokenIntoCacheKey(token), token, expiration).
-					Times(1).Return(nil)
+					Return(nil)
 			},
 			cmd: func(repo *AuthRepository) error {
-				return repo.SaveRefreshTokenToBlackList(context.Background(), token, expiration)
+				return repo.SaveRefreshTokenToBlacklist(context.Background(), token, expiration)
 			},
 			exp: func(err error) {
 				require.NoError(t, err)
@@ -199,10 +354,10 @@ func TestAuthRepository_SaveRefreshTokenToBlackList(t *testing.T) {
 		"FAILURE": {
 			reg: func(_ *gomock.Controller, conn *_cacheMock.MockConn, _ *_uuidMock.MockGenerator) {
 				conn.EXPECT().Set(gomock.Any(), formatRefreshTokenIntoCacheKey(token), token, expiration).
-					Times(1).Return(errors.New(""))
+					Return(errors.New(""))
 			},
 			cmd: func(repo *AuthRepository) error {
-				return repo.SaveRefreshTokenToBlackList(context.Background(), token, expiration)
+				return repo.SaveRefreshTokenToBlacklist(context.Background(), token, expiration)
 			},
 			exp: func(err error) {
 				require.Error(t, err)
@@ -224,10 +379,10 @@ func TestAuthRepository_FindRefreshTokenInBlackList(t *testing.T) {
 		"SUCCESS": {
 			reg: func(_ *gomock.Controller, conn *_cacheMock.MockConn, _ *_uuidMock.MockGenerator) {
 				conn.EXPECT().Exists(gomock.Any(), formatRefreshTokenIntoCacheKey(token)).
-					Times(1).Return(int64(1), nil)
+					Return(int64(1), nil)
 			},
 			cmd: func(repo *AuthRepository) error {
-				found, err := repo.FindRefreshTokenInBlackList(context.Background(), token)
+				found, err := repo.FindRefreshTokenInBlacklist(context.Background(), token)
 				require.True(t, found)
 				return err
 			},
@@ -238,10 +393,10 @@ func TestAuthRepository_FindRefreshTokenInBlackList(t *testing.T) {
 		"FAILURE": {
 			reg: func(_ *gomock.Controller, conn *_cacheMock.MockConn, _ *_uuidMock.MockGenerator) {
 				conn.EXPECT().Exists(gomock.Any(), formatRefreshTokenIntoCacheKey(token)).
-					Times(1).Return(int64(0), errors.New(""))
+					Return(int64(0), errors.New(""))
 			},
 			cmd: func(repo *AuthRepository) error {
-				found, err := repo.FindRefreshTokenInBlackList(context.Background(), token)
+				found, err := repo.FindRefreshTokenInBlacklist(context.Background(), token)
 				require.False(t, found)
 				return err
 			},
@@ -252,10 +407,10 @@ func TestAuthRepository_FindRefreshTokenInBlackList(t *testing.T) {
 		"FAILURE not found": {
 			reg: func(_ *gomock.Controller, conn *_cacheMock.MockConn, _ *_uuidMock.MockGenerator) {
 				conn.EXPECT().Exists(gomock.Any(), formatRefreshTokenIntoCacheKey(token)).
-					Times(1).Return(int64(0), nil)
+					Return(int64(0), nil)
 			},
 			cmd: func(repo *AuthRepository) error {
-				found, err := repo.FindRefreshTokenInBlackList(context.Background(), token)
+				found, err := repo.FindRefreshTokenInBlacklist(context.Background(), token)
 				require.False(t, found)
 				return err
 			},
@@ -279,10 +434,10 @@ func TestAuthRepository_DeleteRefreshTokenFromBlackList(t *testing.T) {
 		"SUCCESS": {
 			reg: func(_ *gomock.Controller, conn *_cacheMock.MockConn, _ *_uuidMock.MockGenerator) {
 				conn.EXPECT().Delete(gomock.Any(), formatRefreshTokenIntoCacheKey(token)).
-					Times(1).Return(int64(1), nil)
+					Return(int64(1), nil)
 			},
 			cmd: func(repo *AuthRepository) error {
-				return repo.DeleteRefreshTokenFromBlackList(context.Background(), token)
+				return repo.DeleteRefreshTokenFromBlacklist(context.Background(), token)
 			},
 			exp: func(err error) {
 				require.NoError(t, err)
@@ -291,10 +446,10 @@ func TestAuthRepository_DeleteRefreshTokenFromBlackList(t *testing.T) {
 		"FAILURE": {
 			reg: func(_ *gomock.Controller, conn *_cacheMock.MockConn, _ *_uuidMock.MockGenerator) {
 				conn.EXPECT().Delete(gomock.Any(), formatRefreshTokenIntoCacheKey(token)).
-					Times(1).Return(int64(0), errors.New(""))
+					Return(int64(0), errors.New(""))
 			},
 			cmd: func(repo *AuthRepository) error {
-				return repo.DeleteRefreshTokenFromBlackList(context.Background(), token)
+				return repo.DeleteRefreshTokenFromBlacklist(context.Background(), token)
 			},
 			exp: func(err error) {
 				require.Error(t, err)
