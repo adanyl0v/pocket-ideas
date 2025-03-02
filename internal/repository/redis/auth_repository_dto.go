@@ -112,3 +112,20 @@ func (d *findSessionsByUserIdDto) ToDomain(s *domain.Session) {
 	s.CreatedAt = d.CreatedAt
 	s.UpdatedAt = d.UpdatedAt
 }
+
+type updateSessionByIdDto saveSessionDto
+
+func newUpdateSessionByIdDto(s *domain.Session) updateSessionByIdDto {
+	return updateSessionByIdDto{
+		ID:           s.ID,
+		UserID:       s.User.ID,
+		Fingerprint:  s.Fingerprint,
+		RefreshToken: s.RefreshToken,
+		ExpiresAt:    s.ExpiresAt,
+		CreatedAt:    s.CreatedAt,
+	}
+}
+
+func (d *updateSessionByIdDto) ToDomain(s *domain.Session) {
+	s.UpdatedAt = d.UpdatedAt
+}

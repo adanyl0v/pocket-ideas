@@ -291,13 +291,38 @@ func (r *AuthRepository) FindSessionsByUserId(ctx context.Context, userId string
 }
 
 func (r *AuthRepository) UpdateSessionById(ctx context.Context, session *domain.Session) error {
-	// TODO implement me
-	panic("implement me")
+	logger := r.logger.With(log.Fields{"id": session.ID})
+
+	dto := newUpdateSessionByIdDto(session)
+	dto.UpdatedAt = time.Now().UTC()
+
+	b, err := r.jsoner.Marshal(dto)
+	if err != nil {
+		logger.WithError(err).Error("failed to marshal a session")
+		return err
+	}
+
+	if err = r.sessionsConn.Set(ctx, formatToSessionKey(dto.ID), b, -1); err != nil {
+		logger.WithError(err).Error("failed to update a session")
+		return err
+	}
+
+	dto.ToDomain(session)
+	logger.Debug("updated a session")
+	return nil
 }
 
 func (r *AuthRepository) DeleteSessionById(ctx context.Context, id string) error {
-	// TODO implement me
-	panic("implement me")
+	logger := r.logger.With(log.Fields{"id": id})
+
+	_, err := r.sessionsConn.Delete(ctx, formatToSessionKey(id))
+	if err != nil {
+		logger.WithError(err).Error("failed to delete a session")
+		return err
+	}
+
+	logger.Debug("deleted a session")
+	return nil
 }
 
 func (r *AuthRepository) SaveAccessTokenToWhitelist(ctx context.Context, accessToken string, expiration time.Duration) error {
