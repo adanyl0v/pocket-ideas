@@ -79,3 +79,36 @@ func (d *findSessionByFingerprintDto) ToDomain(s *domain.Session) {
 	s.CreatedAt = d.CreatedAt
 	s.UpdatedAt = d.UpdatedAt
 }
+
+type findAllSessionsDto saveSessionDto
+
+func newFindAllSessionsDto() findAllSessionsDto {
+	return findAllSessionsDto{}
+}
+
+func (d *findAllSessionsDto) ToDomain(s *domain.Session) {
+	s.ID = d.ID
+	s.User.ID = d.UserID
+	s.Fingerprint = d.Fingerprint
+	s.RefreshToken = d.RefreshToken
+	s.ExpiresAt = d.ExpiresAt
+	s.CreatedAt = d.CreatedAt
+	s.UpdatedAt = d.UpdatedAt
+}
+
+type findSessionsByUserIdDto saveSessionDto
+
+func newFindSessionsByUserIdDto(userId string) findSessionsByUserIdDto {
+	return findSessionsByUserIdDto{
+		UserID: userId,
+	}
+}
+
+func (d *findSessionsByUserIdDto) ToDomain(s *domain.Session) {
+	s.ID = d.ID
+	s.Fingerprint = d.Fingerprint
+	s.RefreshToken = d.RefreshToken
+	s.ExpiresAt = d.ExpiresAt
+	s.CreatedAt = d.CreatedAt
+	s.UpdatedAt = d.UpdatedAt
+}

@@ -221,14 +221,73 @@ func (r *AuthRepository) FindSessionByFingerprint(ctx context.Context, fp domain
 	return session, nil
 }
 
+// FindAllSessions returns a zero-length slice if no sessions were found
 func (r *AuthRepository) FindAllSessions(ctx context.Context) ([]domain.Session, error) {
-	// TODO implement me
-	panic("implement me")
+	it := r.sessionsConn.Scan(ctx, cache.DefaultScanner)
+	if err := it.Err(); err != nil {
+		r.logger.WithError(err).Error("failed to scan sessions")
+		return nil, err
+	}
+
+	sessions := make([]domain.Session, 0)
+	for it.Next(ctx) {
+		var session domain.Session
+		dto := newFindAllSessionsDto()
+
+		var raw string
+		if err := r.sessionsConn.Get(ctx, it.Val(), &raw); err != nil {
+			r.logger.WithError(err).Error("failed to get a session by key")
+			return nil, err
+		}
+
+		if err := r.jsoner.Unmarshal([]byte(raw), &dto); err != nil {
+			r.logger.WithError(err).Error("failed to unmarshal a session")
+			return nil, err
+		}
+
+		dto.ToDomain(&session)
+		sessions = append(sessions, session)
+	}
+
+	r.logger.Debug(fmt.Sprintf("found %d sessions", len(sessions)))
+	return sessions, nil
 }
 
+// FindSessionsByUserId returns a zero-length slice if no sessions were found
 func (r *AuthRepository) FindSessionsByUserId(ctx context.Context, userId string) ([]domain.Session, error) {
-	// TODO implement me
-	panic("implement me")
+	logger := r.logger.With(log.Fields{"user_id": userId})
+
+	it := r.sessionsConn.Scan(ctx, cache.DefaultScanner)
+	if err := it.Err(); err != nil {
+		logger.WithError(err).Error("failed to scan sessions")
+		return nil, err
+	}
+
+	sessions := make([]domain.Session, 0)
+	key := fmt.Sprintf("\"user_id\":\"%s\"", userId)
+	for it.Next(ctx) {
+		var raw string
+		if err := r.sessionsConn.Get(ctx, it.Val(), &raw); err != nil {
+			logger.WithError(err).Error("failed to get a session by key")
+			return nil, err
+		}
+
+		if strings.Contains(raw, key) {
+			var session domain.Session
+			dto := newFindSessionsByUserIdDto(userId)
+
+			if err := r.jsoner.Unmarshal([]byte(raw), &dto); err != nil {
+				logger.WithError(err).Error("failed to unmarshal a session")
+				return nil, err
+			}
+
+			dto.ToDomain(&session)
+			sessions = append(sessions, session)
+		}
+	}
+
+	logger.Debug(fmt.Sprintf("found %d sessions by user id", len(sessions)))
+	return sessions, nil
 }
 
 func (r *AuthRepository) UpdateSessionById(ctx context.Context, session *domain.Session) error {
