@@ -3,20 +3,23 @@ package app
 import (
 	"context"
 	"fmt"
+	stdslog "log/slog"
+	"os"
+	"path/filepath"
+	"time"
+
 	"github.com/adanyl0v/pocket-ideas/internal/config"
 	pgrepo "github.com/adanyl0v/pocket-ideas/internal/repository/postgres"
-	"github.com/adanyl0v/pocket-ideas/pkg/cache/redis"
-	postgres "github.com/adanyl0v/pocket-ideas/pkg/database/postgres/pgx"
+	redisrepo "github.com/adanyl0v/pocket-ideas/internal/repository/redis"
+	"github.com/adanyl0v/pocket-ideas/pkg/cache"
+	rediscache "github.com/adanyl0v/pocket-ideas/pkg/cache/redis"
+	postgresdb "github.com/adanyl0v/pocket-ideas/pkg/database/postgres/pgx"
 	"github.com/adanyl0v/pocket-ideas/pkg/log"
 	"github.com/adanyl0v/pocket-ideas/pkg/log/slog"
 	googleuuidgen "github.com/adanyl0v/pocket-ideas/pkg/uuid/google"
 	slogzap "github.com/samber/slog-zap/v2"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
-	stdslog "log/slog"
-	"os"
-	"path/filepath"
-	"time"
 )
 
 func Run() {
@@ -31,7 +34,12 @@ func Run() {
 	defer func() { _ = redisCache.Close() }()
 
 	userRepo := pgrepo.NewUserRepository(postgresDb, logger, googleuuidgen.New())
+	logger.Info("created a user repository")
 	_ = userRepo
+
+	authRepo := redisrepo.NewAuthRepository(redisCache, redisCache, redisCache, logger, googleuuidgen.New())
+	logger.Info("created an auth repository")
+	_ = authRepo
 }
 
 func mustSetupLogger(env string, cfg *config.LogConfig) log.Logger {
@@ -119,11 +127,11 @@ func mustSetupLogger(env string, cfg *config.LogConfig) log.Logger {
 	return l
 }
 
-func mustConnectToPostgres(logger log.Logger, cfg *config.PostgresConfig) *postgres.Client {
+func mustConnectToPostgres(logger log.Logger, cfg *config.PostgresConfig) *postgresdb.Client {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	pgConf := postgres.Config{
+	pgConf := postgresdb.Config{
 		Host:              cfg.Host,
 		Port:              cfg.Port,
 		User:              cfg.User,
@@ -137,7 +145,7 @@ func mustConnectToPostgres(logger log.Logger, cfg *config.PostgresConfig) *postg
 		HealthCheckPeriod: cfg.HealthCheckPeriod,
 	}
 
-	client, err := postgres.Connect(ctx, logger, &pgConf)
+	client, err := postgresdb.Connect(ctx, logger, &pgConf)
 	if err != nil {
 		panic(err)
 	}
@@ -146,11 +154,11 @@ func mustConnectToPostgres(logger log.Logger, cfg *config.PostgresConfig) *postg
 	return client
 }
 
-func mustConnectToRedis(logger log.Logger, cfg *config.RedisConfig) *redis.Client {
+func mustConnectToRedis(logger log.Logger, cfg *config.RedisConfig) *rediscache.Client {
 	ctx, cancel := context.WithTimeout(context.Background(), cfg.DialTimeout)
 	defer cancel()
 
-	client, err := redis.Connect(ctx, logger, &redis.Config{
+	client, err := rediscache.Connect(ctx, logger, &rediscache.Config{
 		Host:            cfg.Host,
 		Port:            cfg.Port,
 		User:            cfg.User,
@@ -169,6 +177,11 @@ func mustConnectToRedis(logger log.Logger, cfg *config.RedisConfig) *redis.Clien
 	if err != nil {
 		panic(err)
 	}
+
+	cache.DefaultScanner = rediscache.NewCursorScanner(client.DriverConn().Scan)
+	cache.DefaultSetScanner = rediscache.NewKeyCursorScanner(client.DriverConn().SScan)
+	cache.DefaultHashScanner = rediscache.NewKeyCursorScanner(client.DriverConn().HScan)
+	cache.DefaultSortedSetScanner = rediscache.NewKeyCursorScanner(client.DriverConn().ZScan)
 
 	logger.Info("connected to redis")
 	return client

@@ -15,7 +15,7 @@ type Repository struct {
 func (r *Repository) Begin(ctx context.Context) (repository.Tx, error) {
 	tx, err := r.conn.Begin(ctx)
 	if err != nil {
-		r.logger.Error("failed to begin a user repository transaction")
+		r.logger.WithError(err).Error("failed to begin a user repository transaction")
 		return nil, err
 	}
 
